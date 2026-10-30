@@ -60,5 +60,10 @@ class EmberKeepAliveService : Service() {
         return START_STICKY
     }
 
+    override fun onDestroy() {
+        getSharedPreferences("ember_runtime", MODE_PRIVATE).edit().putBoolean("service_active", false).apply()
+        super.onDestroy()
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 }
