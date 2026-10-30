@@ -1,0 +1,1 @@
+<notification-listener-service xmlns:android="http://schemas.android.com/apk/res/android" android:description="@string/notification_listener_description" android:notificationTimeout="500" />
