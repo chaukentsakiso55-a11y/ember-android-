@@ -95,7 +95,7 @@ class MainActivity : Activity() {
                 if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                     requestNotificationPermission(); return
                 }
-                Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
             }
             "notification_access" -> Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
             "accessibility" -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
@@ -134,6 +134,10 @@ class MainActivity : Activity() {
                 .toString()
         }
         @JavascriptInterface fun startAssistantService(): Boolean {
+            if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                runOnUiThread { requestNotificationPermission() }
+                return false
+            }
             return try {
                 val i = Intent(this@MainActivity, EmberKeepAliveService::class.java).setAction(EmberKeepAliveService.ACTION_START)
                 ContextCompat.startForegroundService(this@MainActivity, i)
@@ -150,6 +154,13 @@ class MainActivity : Activity() {
             getSharedPreferences("ember_display", MODE_PRIVATE).edit().putFloat("scale", scale.coerceIn(0.8f, 1.5f)).apply()
         }
         @JavascriptInterface fun getScale(): Float = getSharedPreferences("ember_display", MODE_PRIVATE).getFloat("scale", 1.0f)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::web.isInitialized) web.postDelayed({
+            web.evaluateJavascript("window.dispatchEvent(new Event('ember-permission-refresh'))", null)
+        }, 250)
     }
 
     override fun onBackPressed() {
