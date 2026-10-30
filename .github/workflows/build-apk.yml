@@ -1,4 +1,4 @@
-name: Build EMBER Android APK
+name: Build EMBER Native Kotlin APK
 
 on:
   push:
@@ -14,61 +14,36 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-
-      - name: Validate EMBER HTML interface
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Validate original EMBER interface
         run: |
-          test -s www/index.html
-          grep -q 'id="center"' www/index.html
-          grep -q 'id="inp"' www/index.html
-          grep -q 'id="log"' www/index.html
-
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-
-      - name: Generate Android project
-        run: npx cap add android
-
-      - name: Patch Android shell
-        run: node scripts/patch-android.js
-
-      - name: Sync web interface
-        run: npx cap sync android
-
-      - name: Build debug APK
-        working-directory: android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
-
-      - name: Verify APK exists
-        run: test -s android/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Publish APK artifact
+          test -s app/src/main/assets/index.html
+          grep -q 'id="center"' app/src/main/assets/index.html
+          grep -q 'Traseng created by Darth Wolf' app/src/main/assets/index.html
+          grep -q 'applyEmberScale' app/src/main/assets/index.html
+      - name: Build native Kotlin APK
+        run: gradle :app:assembleDebug --no-daemon
+      - name: Verify APK
+        run: test -s app/build/outputs/apk/debug/app-debug.apk
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: EMBER-Android-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: EMBER-Kotlin-Android-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-
-      - name: Create GitHub release
+      - name: Publish APK release
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: android-build-${{ github.run_number }}
-          name: EMBER Android build ${{ github.run_number }}
+          tag_name: kotlin-build-${{ github.run_number }}
+          name: EMBER Kotlin build ${{ github.run_number }}
           body: |
-            Automated debug-signed EMBER Android build.
-            This release packages the HTML interface in a Capacitor Android shell.
-            Desktop-only Python capabilities are documented separately and are not claimed as Android features.
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+            Native Kotlin Android host with the preserved EMBER interface packaged as an Android asset.
+            This is the initial migration milestone. Advanced Android services are not yet implemented.
+          files: app/build/outputs/apk/debug/app-debug.apk
