@@ -2,10 +2,14 @@ package com.ember.assistant
 
 import android.Manifest
 import android.app.Activity
+import android.app.AppOpsManager
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
+import android.os.Process
 import android.os.Bundle
 import android.provider.Settings
 import android.webkit.JavascriptInterface
@@ -111,6 +115,24 @@ class MainActivity : Activity() {
         @JavascriptInterface fun requestMicrophone() { runOnUiThread { requestMicPermission() } }
         @JavascriptInterface fun requestNotifications() { runOnUiThread { requestNotificationPermission() } }
         @JavascriptInterface fun openPermission(name: String) { runOnUiThread { openPermission(name) } }
+        @JavascriptInterface fun permissionStatus(): String {
+            val enabledNotif = Settings.Secure.getString(contentResolver, "enabled_notification_listeners").orEmpty()
+            val enabledA11y = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
+            val ops = getSystemService(APP_OPS_SERVICE) as AppOpsManager
+            val usage = try { ops.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName) == AppOpsManager.MODE_ALLOWED } catch (_: Exception) { false }
+            val power = getSystemService(POWER_SERVICE) as PowerManager
+            return JSONObject()
+                .put("microphone", ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+                .put("notifications", Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+                .put("notification_access", enabledNotif.contains(packageName + "/" + EmberNotificationListener::class.java.name, true))
+                .put("accessibility", enabledA11y.contains(packageName + "/" + EmberAccessibilityService::class.java.name, true))
+                .put("overlay", Settings.canDrawOverlays(this@MainActivity))
+                .put("modify_settings", Settings.System.canWrite(this@MainActivity))
+                .put("usage", usage)
+                .put("battery", power.isIgnoringBatteryOptimizations(packageName))
+                .put("service", getSharedPreferences("ember_runtime", MODE_PRIVATE).getBoolean("service_active", false))
+                .toString()
+        }
         @JavascriptInterface fun startAssistantService(): Boolean {
             return try {
                 val i = Intent(this@MainActivity, EmberKeepAliveService::class.java).setAction(EmberKeepAliveService.ACTION_START)
