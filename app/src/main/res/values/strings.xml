@@ -1,0 +1,1 @@
+<resources><string name="app_name">EMBER</string><string name="notification_listener_description">Allows Ember to process notifications you explicitly grant access to.</string><string name="accessibility_service_description">Allows Ember to perform accessibility actions only when you enable the service and request an action.</string></resources>
