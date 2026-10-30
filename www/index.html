@@ -209,23 +209,25 @@ x.font='bold 14.67px "Courier New"';x.textAlign="center";x.textBaseline="middle"
 const wy=sy+30,N=36,bw=8,wx0=(W-N*bw)/2,mid=(N-1)/2;for(let i=0;i<N;i++){let hg,cl;if(muted){hg=2;cl=V("MUTED")}else{const env=Math.pow(1-Math.abs(i-mid)/mid,.7),sh=.55+.45*Math.sin(tick*.18+i*.7),idle=3+2*Math.sin(tick*.09+i*.6);hg=Math.floor(Math.max(2,Math.min(24,idle+amp_disp*22*env*sh)));cl=amp_disp>.05?(hg>12?V("PRI"):V("PRI_DIM")):V("BORDER_B")}x.fillStyle=cl;x.fillRect(wx0+i*bw,wy+20-hg,bw-1,hg)}
 requestAnimationFrame(draw)}
 
-// chat — real providers (key rotation + fallback), speech, optional native bridge (window.EmberNative)
+// Gemini-only chat transport. No other provider is contacted.
 const HIST=[],mdl={},ki={};let abortC=null;const NAT=()=>window.EmberNative||null;
-const ORDER=["xkiro","openai","anthropic","groq","openrouter","gemini"];
-function cands(){const ids=[CFG.r.def,...ORDER.filter(i=>i!=CFG.r.def)].filter((v,i,a)=>a.indexOf(v)==i&&CFG.prov[v]&&CFG.prov[v].t!="l"&&CFG.prov[v].on&&CFG.prov[v].k.length),L=CFG.prov.ollama.on?["ollama"]:[];
-return CFG.r.mode=="local"?(CFG.prov.ollama?["ollama"]:[]):CFG.r.mode=="online"?ids:CFG.r.lf?[...ids,...L]:ids}
+function cands(){return CFG.prov.gemini.on&&CFG.prov.gemini.k.length?["gemini"]:[]}
 function sysPrompt(){let m=[];try{m=JSON.parse(localStorage.getItem("ember_mem")||"[]")}catch(e){}
-let s=`You are ${S.name}, a friendly personal AI assistant. Address the user as ${S.user||"sir"}. Keep replies short and spoken-style.`+(m.length?` Things to remember about the user: ${m.join("; ")}.`:"");
-if(CFG.app.master&&CFG.aut.desktop)s+=` You can operate the user's phone. To act, add one or more lines like [[ACTION {"type":"open_app","name":"WhatsApp"}]] after your reply. Types: open_app{name}, tap{text|x,y}, type{text}, swipe{dir}, back, home, read_screen, send_message{to,text}, call{to}, set_alarm{time,label}, read_notifications. Never act without being asked.`;return s}
-async function pickModel(p,id,base,hd,sig){if(p.m)return p.m;if(mdl[id])return mdl[id];const j=await(await fetch(base+"/models",{headers:hd,signal:sig})).json(),ids=(j.data||[]).map(m=>m.id),good=ids.filter(i=>!/embed|whisper|tts|image|moderation|dall|audio|realtime|transcribe/i.test(i));return mdl[id]=good[0]||ids[0]}
-async function callProv(id,key,msgs,sig){const p=CFG.prov[id],base=p.u.replace(/\/$/,""),T=+CFG.r.temp||.7,J={"Content-Type":"application/json"};
-if(p.t=="l"){let m=p.m;if(!m)m=mdl[id]=(await(await fetch(base+"/api/tags",{signal:sig})).json()).models?.[0]?.name;const r=await fetch(base+"/api/chat",{method:"POST",signal:sig,headers:J,body:JSON.stringify({model:m,messages:msgs,stream:false,options:{temperature:T}})});if(!r.ok)throw{s:r.status};return(await r.json()).message.content}
-if(p.t=="a"){const hd={...J,"x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"};let m=p.m||mdl[id];if(!m){const j=await(await fetch(base+"/models",{headers:hd,signal:sig})).json();m=mdl[id]=j.data?.[0]?.id}
-const r=await fetch(base+"/messages",{method:"POST",signal:sig,headers:hd,body:JSON.stringify({model:m,max_tokens:1024,temperature:T,system:msgs[0].content,messages:msgs.slice(1)})});if(!r.ok)throw{s:r.status};return(await r.json()).content.map(c=>c.text||"").join("")}
-const hd={...J,Authorization:"Bearer "+key,...(id=="openrouter"?{"HTTP-Referer":"https://ember.local","X-Title":"Ember"}:{})},m=await pickModel(p,id,base,hd,sig);
-const r=await fetch(base+"/chat/completions",{method:"POST",signal:sig,headers:hd,body:JSON.stringify({model:m,messages:msgs,temperature:T})});if(!r.ok)throw{s:r.status};return(await r.json()).choices[0].message.content}
-async function ask(){const ids=cands();if(!ids.length)throw{none:1};const msgs=[{role:"system",content:sysPrompt()},...HIST.slice(-20)];let last;
-for(const id of ids){const p=CFG.prov[id],keys=p.t=="l"?[""]:p.k,st=ki[id]||0;for(let n=0;n<keys.length;n++){const i=(st+n)%keys.length;try{const t=await callProv(id,keys[i],msgs,abortC.signal);ki[id]=i;return t}catch(e){if(e.name=="AbortError")throw e;last=e;if(e.s&&![401,403,429].includes(e.s)&&e.s<500)break}}}throw last||{}}
+ let s=`You are ${S.name}, a friendly personal AI assistant. Address the user as ${S.user||"sir"}. Keep replies short and spoken-style.`+(m.length?` Things to remember about the user: ${m.join("; ")}.`:"");
+ if(CFG.app.master&&CFG.aut.desktop)s+=` You can operate the user's phone. To act, add one or more lines like [[ACTION {"type":"open_app","name":"WhatsApp"}]] after your reply. Types: open_app{name}, tap{text|x,y}, type{text}, swipe{dir}, back, home, read_screen, send_message{to,text}, call{to}, set_alarm{time,label}, read_notifications. Never act without being asked.`;return s}
+async function callGemini(key,sig){
+ const p=CFG.prov.gemini,model=(p.m||"gemini-2.5-flash").trim();
+ const contents=HIST.slice(-20).map(m=>({role:m.role==="assistant"?"model":"user",parts:[{text:m.content}]}));
+ const url="https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent";
+ const r=await fetch(url,{method:"POST",signal:sig,headers:{"Content-Type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:sysPrompt()}]},contents,generationConfig:{temperature:Math.max(0,Math.min(1,+CFG.r.temp||0.7)),maxOutputTokens:1024}})});
+ const data=await r.json().catch(()=>({}));
+ if(!r.ok)throw{status:r.status,message:data.error?.message||("HTTP "+r.status)};
+ const answer=(data.candidates?.[0]?.content?.parts||[]).map(x=>x.text||"").join("").trim();
+ if(!answer)throw{message:"Gemini returned an empty response. Check model access or safety filtering."};
+ return answer;
+}
+async function ask(){const key=CFG.prov.gemini.k[0];if(!key)throw{none:1};return callGemini(key,abortC.signal)}
+
 function confirmAct(a){return new Promise(res=>{opn(`<h2>⚠  CONFIRM</h2><p>${esc(S.name)} wants to: <b style="color:var(--WHITE)">${esc(a.type)}</b> ${esc(JSON.stringify(a).slice(0,160))}</p><div class=row><button class=bb id=cy>▸  CONFIRM</button><button class="bb d" id=cn2>CANCEL</button></div>`);$("#cy").onclick=()=>{cls();res(1)};$("#cn2").onclick=()=>{cls();res(0)};});}
 async function runActs(text){const re=/\[\[ACTION\s*(\{.*?\})\s*\]\]/g,acts=[];let m;while(m=re.exec(text)){try{acts.push(JSON.parse(m[1]))}catch(e){}}const clean=text.replace(re,"").trim();
 for(const a of acts){if(!CFG.app.master||!CFG.aut.desktop){log("SYS: App control is off — enable it in SETTINGS · APPS.");break}
@@ -242,11 +244,25 @@ async function send(txt){const i=$("#inp"),t=(typeof txt=="string"?txt:i.value).
 if(CFG.prv.kill){log("ERR: Kill switch is on — tools and speech are blocked.");return}
 stopAll();abortC=new AbortController();setState("THINKING");HIST.push({role:"user",content:t});
 try{const raw=await ask(),clean=await runActs(raw);HIST.push({role:"assistant",content:raw});if(clean){log(`${S.name.toUpperCase()}: ${clean}`);speak(clean)}else setState("LISTENING")}
-catch(e){if(e&&e.name=="AbortError")return;setState("LISTENING");HIST.pop();log(e&&e.none?"ERR: No provider is ready. Open ⚙ SETTINGS · API KEYS and add a key.":"ERR: "+(e&&e.s?`Provider error ${e.s}.`:"Could not reach any provider. Check your key and connection."))}}
+catch(e){if(e&&e.name=="AbortError")return;setState("LISTENING");HIST.pop();log(e&&e.none?"ERR: Add a Gemini API key in SETTINGS · API KEYS.":"ERR: Gemini request failed — "+(e?.message||("HTTP "+e?.status||"network error")))}}
 function interrupt(){const was=state=="SPEAKING"||state=="THINKING";stopAll();if(was)log("SYS: Interrupted.");setState("LISTENING")}
 window.ember={send:t=>send(String(t)),onSpeech:t=>send(String(t)),get config(){return CFG}};
 function styleMute(){const b=$("#mute");b.classList.toggle("m",S.muted);b.textContent=S.muted?"🔇  MICROPHONE MUTED":"🎙  MICROPHONE ACTIVE"}
-function mute(){S.muted=!S.muted;styleMute();save();log("SYS: Microphone "+(S.muted?"muted":"active"));setState("LISTENING")}
+let speechRec=null,speechStarting=false;
+function stopMic(){try{speechRec?.stop()}catch(e){}speechRec=null;speechStarting=false}
+function startMic(){
+ if(S.muted||speechStarting||speechRec)return;
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!SR){setState("MIC UNAVAILABLE");log("ERR: Speech recognition is not supported by this Android WebView.");return}
+ try{const rec=new SR();speechRec=rec;speechStarting=true;rec.continuous=true;rec.interimResults=false;rec.lang=navigator.language||"en-US";
+ rec.onstart=()=>{speechStarting=false;setState("LISTENING")};
+ rec.onresult=e=>{const r=e.results[e.results.length-1];if(r?.isFinal&&r[0]?.transcript)send(r[0].transcript)};
+ rec.onerror=e=>{speechStarting=false;if(e.error!=="no-speech"&&e.error!=="aborted")log("MIC: "+e.error);if(e.error==="not-allowed"||e.error==="service-not-allowed")setState("MIC PERMISSION NEEDED")};
+ rec.onend=()=>{speechRec=null;speechStarting=false;if(!S.muted&&document.visibilityState==="visible")setTimeout(startMic,1000)};
+ rec.start()}catch(e){speechStarting=false;speechRec=null;setState("MIC UNAVAILABLE");log("MIC: "+(e.message||"Could not start"))}
+}
+function mute(){S.muted=!S.muted;if(S.muted)stopMic();else startMic();styleMute();save();log("SYS: Microphone "+(S.muted?"muted":"active"));if(S.muted)setState("MUTED")}
+
 // drawer
 const D=[["◉  REMOTE CONTROL","remote","p"],["⛶  FULLSCREEN  [F11]","fs"],["⊞  CREATE DESKTOP SHORTCUT","sc"],["as"],["⚙  CUSTOMISE ASSISTANT","cust"],["br"],["wk"],["pt"],["hu"],["🎧  AUDIO DEVICES","aud"],["🧠  MEMORY","mem"],["🧩  PLUGINS","plug"],["⚙  SETTINGS  ·  API KEYS","pset"]];
 const lbl={as:()=>"◉  AUTO-START: "+(S.autostart?"ON":"OFF"),br:()=>"☀  MORNING BRIEF: "+(S.brief?"ON":"OFF"),wk:()=>"🎙  WAKE WORD: "+(S.wake?"ON":"OFF"),pt:()=>S.ptt?"🎚  PUSH-TO-TALK: ON":"🎚  PUSH-TO-TALK: OFF",hu:()=>S.face?"🧑  HUD: ANIMATED FACE":"◎  HUD: CORE REACTOR"};
@@ -283,7 +299,7 @@ function plugs(){let P=JSON.parse(localStorage.getItem("ember_pl")||"{}");opn(`<
 box.onclick=e=>{const p=e.target.dataset?.p;if(p){P[p]=P[p]===false;localStorage.setItem("ember_pl",JSON.stringify(P));plugs()}}}
 // ===== Advanced settings (API keys, model, control, apps, privacy, general) =====
 const DEFC={prov:{xkiro:{n:"xKiro",u:"https://api.xkiro.com/v1",t:"o",m:"",on:1,k:[]},openai:{n:"OpenAI",u:"https://api.openai.com/v1",t:"o",m:"",on:1,k:[]},anthropic:{n:"Anthropic Claude",u:"https://api.anthropic.com/v1",t:"a",m:"",on:1,k:[]},groq:{n:"Groq",u:"https://api.groq.com/openai/v1",t:"o",m:"",on:1,k:[]},openrouter:{n:"OpenRouter",u:"https://openrouter.ai/api/v1",t:"o",m:"",on:1,k:[]},gemini:{n:"Google Gemini",u:"https://generativelanguage.googleapis.com/v1beta/openai",t:"o",m:"gemini-2.5-flash",on:1,k:[]},ollama:{n:"Ollama (local)",u:"http://localhost:11434",t:"l",m:"",on:1,k:[]}},
- r:{def:"xkiro",lf:1,mode:"auto",lurl:"http://localhost:11434",lmodel:"",temp:"0.7"},
+ r:{def:"gemini",lf:0,mode:"online",lurl:"http://localhost:11434",lmodel:"",temp:"0.7"},
  aut:{desktop:1,game:1,msg:1,wa:0,waall:0,wag:1,contacts:"",poll:"6",par:"4"},
  app:{master:0,confirm:1,block:"",acc:0,launch:1,notif:0,overlay:0,cap:0,sms:0,calls:0,contacts:0,cal:0,files:0,mic:1,cam:0,loc:0,usage:0,bat:0,boot:0},
  prv:{kill:0,temp:0,plog:1,whisper:0,digest:1,screen:1,wfrec:0,agents:1},
@@ -296,7 +312,7 @@ const esc=t=>String(t).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const THEMES={amber:"#ffb000",cyber:"#00d4ff",violet:"#a855f7",emerald:"#10e090",rose:"#ff4d7d",mono:"#9aa5ab"};
 const TABS=[["keys","🔑 API KEYS"],["model","🧠 MODEL"],["ctl","🎮 CONTROL"],["apps","📱 APPS"],["prv","🛡 PRIVACY"],["gen","⚙ GENERAL"]];
 const APPS=[["acc","Accessibility service — tap, type & swipe inside any app"],["launch","Open & switch between apps"],["notif","Read & reply to notifications"],["overlay","Display over other apps"],["cap","Screen capture / screen understanding"],["sms","Read & send text messages"],["calls","Make & answer calls"],["contacts","Contacts"],["cal","Calendar"],["files","Files & storage"],["mic","Microphone"],["cam","Camera"],["loc","Location"],["usage","App usage access"],["bat","Ignore battery optimisation (stay alive)"],["boot","Start on boot"]];
-let sTab="keys",sOpen="xkiro",sMsg={};
+let sTab="keys",sOpen="gemini",sMsg={};
 const tgb=(p,l,sub)=>{const on=cget(p);return`<div class=li><span>${l}${sub?`<br><small style="color:var(--TEXT_DIM)">${sub}</small>`:""}</span><button class="bb ${on?"on":"d"}" style="height:24px;min-width:46px" data-a=tg data-p="${p}">${on?"ON":"OFF"}</button></div>`};
 const txf=(p,l,ph,pw)=>`<label>${l}</label><input type=${pw||"text"} data-f="${p}" value="${esc(cget(p))}" placeholder="${ph||""}">`;
 const seg=(p,opts)=>`<div class=row style="flex-wrap:wrap">${opts.map(o=>`<button class="bb ${cget(p)==o[0]?"on":"d"}" data-a=sg data-p="${p}" data-v="${o[0]}">${o[1]}</button>`).join("")}</div>`;
@@ -311,7 +327,7 @@ if(p.t!="l"){h+=p.k.map((k,i)=>`<div class=li style="padding:3px 8px"><span styl
 h+=txf(`prov.${id}.m`,"MODEL (blank = auto-discover)","auto")+txf(`prov.${id}.u`,"BASE URL","https://…")+`<div class=row><button class="bb d" data-a=test data-v=${id}>TEST CONNECTION</button></div><p id="sm_${id}" style="min-height:14px">${esc(sMsg[id]||"")}</p>`}
 h+=`</div>`}
 h+=`<p>Keys are kept on this device only and are never shown in the log. Browser storage is not encrypted — the Android build should keep them in the system keystore.</p>`}
-else if(t=="model"){h+=`<label>MODEL ROUTING</label>${seg("r.mode",[["local","LOCAL"],["auto","AUTO"],["online","ONLINE"]])}<p>LOCAL is pinned to Ollama / your local server. AUTO tries online providers, then falls back to local. ONLINE never uses local.</p>`+tgb("r.lf","Fall back to local model when online providers fail")+txf("prov.ollama.u","LOCAL SERVER URL (Ollama, LM Studio, Jan, llama.cpp)","http://localhost:11434")+txf("prov.ollama.m","LOCAL MODEL","e.g. llama3.2")+txf("r.temp","TEMPERATURE (0 – 1)","0.7")}
+else if(t=="model"){h+=`<label>GEMINI MODEL</label>`+txf("prov.gemini.m","MODEL","gemini-2.5-flash")+txf("r.temp","TEMPERATURE (0 – 1)","0.7")+tgb("prov.gemini.on","Enable Gemini")}
 else if(t=="ctl"){h+=`<p>Separate switches for each kind of autonomy. Turning one off blocks that whole class of actions.</p>`+tgb("aut.desktop","Phone / desktop control")+tgb("aut.game","Game control")+tgb("aut.msg","Messaging actions")+tgb("aut.wa","WhatsApp automatic replies")+tgb("aut.waall","Auto-reply to all unread chats")+tgb("aut.wag","Pause auto-reply on high-stakes messages")+txf("aut.contacts","ALLOWED AUTO-REPLY CONTACTS (comma separated)","Friend One, Family Group")+txf("aut.poll","WHATSAPP CHECK INTERVAL (seconds)","6")+txf("aut.par","MAX PARALLEL BACKGROUND TASKS","4")}
 else if(t=="apps"){h+=`<p>Let Ember operate your apps by voice or text — open them, read the screen, tap, type and send. Android only grants this through permissions you approve in system settings.</p>`+tgb("app.master","Allow Ember to control my apps","Master switch — everything below needs this on")+tgb("app.confirm","Ask before sensitive actions","Payments, sending messages, deleting, installing")+`<label>NEVER TOUCH THESE APPS (comma separated)</label><input type=text data-f="app.block" value="${esc(CFG.app.block)}" placeholder="Banking app, Wallet, Authenticator"><label>PERMISSIONS</label>`+APPS.map(a=>tgb("app."+a[0],a[1])).join("")+`<p>${CFG.app.master?"These choices are saved here. The Android build turns each one into the matching system permission request.":"App control is off."}</p>`}
 else if(t=="prv"){h+=tgb("prv.kill","Emergency kill switch","Blocks all tools, mic streaming, camera and speech")+tgb("prv.temp","Temporary memory mode","Nothing is remembered after the session")+tgb("prv.plog","Privacy audit log")+tgb("prv.whisper","Whisper mode","Quieter voice playback")+tgb("prv.digest","Notification digest")+tgb("prv.screen","Screen understanding")+tgb("prv.wfrec","Workflow recording")+tgb("prv.agents","Multi-agent supervisor")}
@@ -331,9 +347,9 @@ else if(a=="theme"){CFG.gen.theme=v;csave();accent(THEMES[v]);S.accent=THEMES[v]
 else if(a=="exp"){const o=JSON.parse(JSON.stringify(CFG));for(const k in o.prov)o.prov[k].k=[];try{navigator.clipboard.writeText(JSON.stringify(o,null,1));$("#gmsg").textContent="Settings copied to clipboard (keys left out)."}catch(er){$("#gmsg").textContent="Copy not allowed here."}}
 else if(a=="rst"){CFG=JSON.parse(JSON.stringify(DEFC));csave();log("SYS: Settings reset");settings()}};
 box.onchange=e=>{const f=e.target.dataset?.f;if(f){cset(f,e.target.value);if(f.endsWith(".m")||f.endsWith(".u"))csave()}}}
-async function testProv(id){const p=CFG.prov[id],m=$("#sm_"+id);const say=t=>{sMsg[id]=t;if($("#sm_"+id))$("#sm_"+id).textContent=t};if(p.t!="l"&&!p.k.length){say("Add a key first.");return}say("Testing…");
-const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),8000);try{let u,hd={};const base=p.u.replace(/\/$/,"");if(p.t=="l"){u=base+"/api/tags"}else if(p.t=="a"){u=base+"/models";hd={"x-api-key":p.k[0],"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"}}else{u=base+"/models";hd={Authorization:"Bearer "+p.k[0]}}
-const r=await fetch(u,{headers:hd,signal:ctl.signal});say(r.ok?"Connected ✓":r.status==401||r.status==403?"Key rejected ("+r.status+")":"Server answered "+r.status)}catch(er){say("Could not reach it from the browser (network or CORS). The Android app will test it natively.")}clearTimeout(to)}
+async function testProv(id){const p=CFG.prov.gemini,say=t=>{sMsg.gemini=t;if($("#sm_gemini"))$("#sm_gemini").textContent=t};if(!p.k.length){say("Add a Gemini API key first.");return}say("Testing Gemini…");
+ const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),12000);
+ try{const model=(p.m||"gemini-2.5-flash").trim();const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":p.k[0]},signal:ctl.signal,body:JSON.stringify({contents:[{parts:[{text:"Reply with exactly: EMBER CONNECTION OK"}]}],generationConfig:{maxOutputTokens:20}})});const d=await r.json().catch(()=>({}));say(r.ok?"Gemini connected ✓":"Gemini error "+r.status+": "+(d.error?.message||"Request rejected"))}catch(e){say(e.name==="AbortError"?"Gemini test timed out.":"Network/CORS error: "+e.message)}finally{clearTimeout(to)}}
 function pset(){setBoxOn();settings()}
 // events
 $("#send").onclick=()=>send();$("#inp").onkeydown=e=>{if(e.key=="Enter")send()};$("#int").onclick=interrupt;$("#mute").onclick=mute;
@@ -361,5 +377,5 @@ let wl=null;async function awake(){try{if(CFG.gen.awake&&navigator.wakeLock&&!wl
 // boot
 accent(S.accent);names();styleMute();drawer();fit();clock();metrics();setInterval(clock,1000);setInterval(metrics,1000);requestAnimationFrame(draw);
 const boot=["Core","Memory","Vision","Plugins","Privacy Guard"];boot.forEach((b,i)=>setTimeout(()=>log(`SYS: ${b} … OK`),250*i));
-setTimeout(()=>{log("SYS: EMBER Active");setState("LISTENING")},250*boot.length+200);
+setTimeout(()=>{log("SYS: EMBER Active · Gemini only");if(!S.muted)startMic();else setState("MUTED")},250*boot.length+200);
 </script></body></html>
