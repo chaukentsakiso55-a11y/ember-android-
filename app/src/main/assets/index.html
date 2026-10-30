@@ -356,6 +356,8 @@ async function discoverModels(){const p=CFG.prov.gemini,say=t=>{sMsg.models=t;co
 function applyEmberScale(scale){scale=Math.max(.8,Math.min(1.5,scale));localStorage.setItem("ember_text_scale",String(scale));if(window.EmberNative?.saveScale)EmberNative.saveScale(scale);document.documentElement.style.setProperty("--ember-text-scale",scale);document.querySelectorAll("#stage *").forEach(el=>{if(!el.dataset.emberBaseFont){const n=parseFloat(getComputedStyle(el).fontSize);if(Number.isFinite(n))el.dataset.emberBaseFont=n}const n=Number(el.dataset.emberBaseFont);if(Number.isFinite(n))el.style.setProperty("font-size",(n*scale)+"px","important")});}
 function restoreEmberScale(){let z=Number(localStorage.getItem("ember_text_scale")||"1");if(window.EmberNative?.getScale){try{z=EmberNative.getScale();localStorage.setItem("ember_text_scale",String(z))}catch(e){}}applyEmberScale(z)}
 function pset(){setBoxOn();settings()}
+ addEventListener("ember-permission-refresh",()=>{if(sTab==="permissions"&&$("#ov").classList.contains("on"))settings("permissions")});
+ addEventListener("ember-service-stopped",()=>{if(sTab==="permissions")settings("permissions")});
 // events
 $("#send").onclick=()=>send();$("#inp").onkeydown=e=>{if(e.key=="Enter")send()};$("#int").onclick=interrupt;$("#mute").onclick=mute;
 addEventListener("keydown",e=>{if(e.key=="Escape"){cls();interrupt()}if(e.key=="F4"){e.preventDefault();mute()}});
