@@ -257,7 +257,6 @@ class MainActivity : Activity() {
         web.postDelayed({
             speechRestartPending = false
             if (speechWanted && !isFinishing && !isDestroyed) {
-                try { speechRecognizer?.cancel() } catch (_: Exception) { }
                 startNativeSpeech()
             }
         }, delay)
