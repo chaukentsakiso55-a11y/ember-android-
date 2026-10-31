@@ -222,7 +222,7 @@ async function callGemini(key,sig){
  const timeout=setTimeout(()=>sig?.abort(),30000);
  let response;
  try {
-  response=await fetch(url,{method:"POST",signal:sig,headers:{"Content-Type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:sysPrompt()}]},contents,generationConfig:{temperature:Math.max(0,Math.min(1,+CFG.r.temp||0.7)),maxOutputTokens:1024}})});
+  response=await fetch(url,{method:"POST",signal:sig,headers:{"Content-Type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:sysPrompt()}]},contents,generationConfig:{maxOutputTokens:1024}})});
  } finally { clearTimeout(timeout); }
  const data=await response.json().catch(()=>({}));
  if(!response.ok)throw{status:response.status,message:data.error?.message||("HTTP "+response.status)};
@@ -253,11 +253,22 @@ function interrupt(){const was=state=="SPEAKING"||state=="THINKING";stopAll();if
 window.ember={send:t=>send(String(t)),onSpeech:t=>send(String(t)),get config(){return CFG}};
 function styleMute(){const b=$("#mute");b.classList.toggle("m",S.muted);b.textContent=S.muted?"🔇  UNMUTE MICROPHONE":"🎙  MUTE MICROPHONE"}
 let speechRec=null,speechStarting=false;
-function stopMic(){try{speechRec?.stop()}catch(e){}speechRec=null;speechStarting=false}
+function stopMic(){
+ try{if(NAT()?.stopVoiceInput)NAT().stopVoiceInput();else speechRec?.stop()}catch(e){}
+ speechRec=null;speechStarting=false
+}
+window.emberNativeSpeechResult=text=>{speechStarting=false;if(text&&String(text).trim())send(String(text).trim())};
+window.emberNativeSpeechState=s=>{speechStarting=false;if(!S.muted)setState(s||"LISTENING")};
+window.emberNativeSpeechError=message=>{speechStarting=false;if(!S.muted){setState("MIC ERROR");log("MIC: "+String(message||"Voice input unavailable"))}};
 function startMic(){
  if(S.muted||speechStarting||speechRec)return;
+ if(NAT()?.startVoiceInput){
+  speechStarting=true;
+  try{NAT().startVoiceInput()}catch(e){speechStarting=false;setState("MIC UNAVAILABLE");log("MIC: "+(e.message||"Could not start native voice input"))}
+  return;
+ }
  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
- if(!SR){setState("MIC UNAVAILABLE");log("ERR: Speech recognition is not supported by this Android WebView.");return}
+ if(!SR){setState("MIC UNAVAILABLE");log("ERR: Speech recognition is not supported on this device.");return}
  try{const rec=new SR();speechRec=rec;speechStarting=true;rec.continuous=true;rec.interimResults=false;rec.lang=navigator.language||"en-US";
  rec.onstart=()=>{speechStarting=false;setState("LISTENING")};
  rec.onresult=e=>{const r=e.results[e.results.length-1];if(r?.isFinal&&r[0]?.transcript)send(r[0].transcript)};
