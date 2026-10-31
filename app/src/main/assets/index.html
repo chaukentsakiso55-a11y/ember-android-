@@ -219,9 +219,13 @@ async function callGemini(key,sig){
  const p=CFG.prov.gemini,model=(p.m||"gemini-3.8-flash").trim();
  const contents=HIST.slice(-20).map(m=>({role:m.role==="assistant"?"model":"user",parts:[{text:m.content}]}));
  const url="https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent";
- const timeout=setTimeout(()=>sig?.abort(),30000);\n let r;\n try { r=await fetch(url,{method:"POST",signal:sig,headers:{"Content-Type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:sysPrompt()}]},contents,generationConfig:{temperature:Math.max(0,Math.min(1,+CFG.r.temp||0.7)),maxOutputTokens:1024}})});
- const data=await r.json().catch(()=>({}));
- if(!r.ok)throw{status:r.status,message:data.error?.message||("HTTP "+r.status)};
+ const timeout=setTimeout(()=>sig?.abort(),30000);
+ let response;
+ try {
+  response=await fetch(url,{method:"POST",signal:sig,headers:{"Content-Type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:sysPrompt()}]},contents,generationConfig:{temperature:Math.max(0,Math.min(1,+CFG.r.temp||0.7)),maxOutputTokens:1024}})});
+ } finally { clearTimeout(timeout); }
+ const data=await response.json().catch(()=>({}));
+ if(!response.ok)throw{status:response.status,message:data.error?.message||("HTTP "+response.status)};
  const answer=(data.candidates?.[0]?.content?.parts||[]).map(x=>x.text||"").join("").trim();
  if(!answer)throw{message:"Gemini returned an empty response. Check model access or safety filtering."};
  return answer;
