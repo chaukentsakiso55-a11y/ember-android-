@@ -12,6 +12,9 @@ import android.os.PowerManager
 import android.os.Process
 import android.os.Bundle
 import android.provider.Settings
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
@@ -29,6 +32,9 @@ class MainActivity : Activity() {
     private val requestNotifications = 4102
     private val requestOther = 4103
     private var pendingWebPermission: PermissionRequest? = null
+    private var speechRecognizer: SpeechRecognizer? = null
+    @Volatile private var speechWanted = false
+    private var speechRestartPending = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -91,6 +97,7 @@ class MainActivity : Activity() {
             if (granted && request != null) request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
             else request?.deny()
             if (::web.isInitialized) web.evaluateJavascript("window.dispatchEvent(new Event('ember-mic-permission-result'))", null)
+            if (granted && speechWanted) startNativeSpeech()
         }
         if (requestCode == requestOther && ::web.isInitialized) {
             web.evaluateJavascript("window.dispatchEvent(new Event('ember-permission-refresh'))", null)
@@ -128,6 +135,18 @@ class MainActivity : Activity() {
     inner class EmberNativeBridge {
         @JavascriptInterface fun platform(): String = "android-kotlin"
         @JavascriptInterface fun requestMicrophone() { runOnUiThread { requestMicPermission() } }
+        @JavascriptInterface fun startVoiceInput(): Boolean {
+            speechWanted = true
+            runOnUiThread {
+                if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) requestMicPermission()
+                else startNativeSpeech()
+            }
+            return true
+        }
+        @JavascriptInterface fun stopVoiceInput() {
+            speechWanted = false
+            runOnUiThread { stopNativeSpeech(destroy = false) }
+        }
         @JavascriptInterface fun requestNotifications() { runOnUiThread { requestNotificationPermission() } }
         @JavascriptInterface fun openPermission(name: String) { runOnUiThread { openPermission(name) } }
         @JavascriptInterface fun permissionStatus(): String {
@@ -181,10 +200,88 @@ class MainActivity : Activity() {
         @JavascriptInterface fun getScale(): Float = getSharedPreferences("ember_display", MODE_PRIVATE).getFloat("scale", 1.0f)
     }
 
+    private fun startNativeSpeech() {
+        if (!speechWanted || isFinishing || isDestroyed) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestMicPermission()
+            return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            web.evaluateJavascript("window.emberNativeSpeechError && window.emberNativeSpeechError('Speech recognition service unavailable')", null)
+            return
+        }
+        try {
+            if (speechRecognizer == null) {
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).also { recognizer ->
+                    recognizer.setRecognitionListener(object : RecognitionListener {
+                        override fun onReadyForSpeech(params: Bundle?) { web.evaluateJavascript("window.emberNativeSpeechState && window.emberNativeSpeechState('LISTENING')", null) }
+                        override fun onBeginningOfSpeech() = Unit
+                        override fun onRmsChanged(rmsdB: Float) = Unit
+                        override fun onBufferReceived(buffer: ByteArray?) = Unit
+                        override fun onEndOfSpeech() = Unit
+                        override fun onError(error: Int) {
+                            if (!speechWanted || isFinishing || isDestroyed) return
+                            if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                                speechWanted = false
+                                web.evaluateJavascript("window.emberNativeSpeechError && window.emberNativeSpeechError('Microphone permission is required')", null)
+                                return
+                            }
+                            scheduleSpeechRestart(700)
+                        }
+                        override fun onResults(results: Bundle?) {
+                            val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                            if (spoken.isNotBlank()) web.evaluateJavascript("window.emberNativeSpeechResult && window.emberNativeSpeechResult(${JSONObject.quote(spoken)})", null)
+                            scheduleSpeechRestart(350)
+                        }
+                        override fun onPartialResults(partialResults: Bundle?) = Unit
+                        override fun onEvent(eventType: Int, params: Bundle?) = Unit
+                    })
+                }
+            }
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, java.util.Locale.getDefault().toLanguageTag())
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            }
+            speechRecognizer?.startListening(intent)
+        } catch (e: Exception) {
+            web.evaluateJavascript("window.emberNativeSpeechError && window.emberNativeSpeechError(${JSONObject.quote(e.message ?: "Could not start microphone")})", null)
+            scheduleSpeechRestart(1200)
+        }
+    }
+
+    private fun scheduleSpeechRestart(delay: Long) {
+        if (speechRestartPending) return
+        speechRestartPending = true
+        web.postDelayed({
+            speechRestartPending = false
+            if (speechWanted && !isFinishing && !isDestroyed) {
+                try { speechRecognizer?.cancel() } catch (_: Exception) { }
+                startNativeSpeech()
+            }
+        }, delay)
+    }
+
+    private fun stopNativeSpeech(destroy: Boolean) {
+        speechRestartPending = false
+        try { speechRecognizer?.cancel() } catch (_: Exception) { }
+        if (destroy) {
+            try { speechRecognizer?.destroy() } catch (_: Exception) { }
+            speechRecognizer = null
+        }
+    }
+
+    override fun onPause() {
+        stopNativeSpeech(destroy = false)
+        super.onPause()
+    }
+
     override fun onResume() {
         super.onResume()
         if (::web.isInitialized) web.postDelayed({
             web.evaluateJavascript("window.dispatchEvent(new Event('ember-permission-refresh'))", null)
+            if (speechWanted) startNativeSpeech()
         }, 250)
     }
 
@@ -194,6 +291,8 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        speechWanted = false
+        stopNativeSpeech(destroy = true)
         pendingWebPermission?.deny()
         if (::web.isInitialized) web.destroy()
         super.onDestroy()
