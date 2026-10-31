@@ -81,7 +81,7 @@ EMBER</div></div>
 <script>
 const $=s=>document.querySelector(s);
 const BASE={BG:"#00060a",PANEL:"#010d14",PANEL2:"#010f18",BORDER:"#0d3347",BORDER_B:"#1a5c7a",BORDER_A:"#0f4060",PRI:"#00d4ff",PRI_DIM:"#007a99",PRI_GHO:"#001f2e",TEXT:"#8ffcff",TEXT_DIM:"#3a8a9a",TEXT_MED:"#5ab8cc",WHITE:"#d8f8ff",DARK:"#000d14",BAR_BG:"#011520"};
-let S={name:"Ember",user:"",voice:"Charon",accent:"#00d4ff",autostart:false,brief:false,wake:false,ptt:false,face:true,muted:false};
+let S={name:"Ember",user:"",voice:"Charon",accent:"#00d4ff",autostart:false,brief:false,wake:false,ptt:false,face:true,muted:true};
 try{Object.assign(S,JSON.parse(localStorage.getItem("ember")||"{}"))}catch(e){}
 const save=()=>{try{localStorage.setItem("ember",JSON.stringify(S))}catch(e){}};
 const h2r=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255);
