@@ -214,7 +214,7 @@ const HIST=[],mdl={},ki={};let abortC=null;const NAT=()=>window.EmberNative||nul
 function cands(){return CFG.prov.gemini.on&&CFG.prov.gemini.k.length?["gemini"]:[]}
 function sysPrompt(){let m=[];try{m=JSON.parse(localStorage.getItem("ember_mem")||"[]")}catch(e){}
  let s=`You are ${S.name}, a friendly personal AI assistant. Address the user as ${S.user||"sir"}. Keep replies short and spoken-style.`+(m.length?` Things to remember about the user: ${m.join("; ")}.`:"");
- if(CFG.app.master&&CFG.aut.desktop)s+=` You can operate the user's phone. To act, add one or more lines like [[ACTION {"type":"open_app","name":"WhatsApp"}]] after your reply. Types: open_app{name}, tap{text|x,y}, type{text}, swipe{dir}, back, home, read_screen, send_message{to,text}, call{to}, set_alarm{time,label}, read_notifications. Never act without being asked.`;return s}
+ if(CFG.app.master&&CFG.aut.desktop)s+=` You can operate the user's phone. To act, add one or more lines like [[ACTION {"type":"open_app","name":"WhatsApp"}]] after your reply. Supported actions: open_app{name}, tap{text}, type{text}, swipe{dir}, back, home. Only use these actions. Never send messages, place calls, read private screen content, or perform purchases. Ask the user before acting.`;return s}
 async function callGemini(key,sig){
  const p=CFG.prov.gemini,model=(p.m||"gemini-3.8-flash").trim();
  const contents=HIST.slice(-20).map(m=>({role:m.role==="assistant"?"model":"user",parts:[{text:m.content}]}));
