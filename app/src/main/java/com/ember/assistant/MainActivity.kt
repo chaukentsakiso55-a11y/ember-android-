@@ -27,6 +27,7 @@ class MainActivity : Activity() {
     private lateinit var web: WebView
     private val requestMic = 4101
     private val requestNotifications = 4102
+    private val requestOther = 4103
     private var pendingWebPermission: PermissionRequest? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,6 +68,14 @@ class MainActivity : Activity() {
         ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), requestMic)
     }
 
+    private fun requestRuntime(permission: String) {
+        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
+            web.evaluateJavascript("window.dispatchEvent(new Event('ember-permission-refresh'))", null)
+            return
+        }
+        ActivityCompat.requestPermissions(this, arrayOf(permission), requestOther)
+    }
+
     private fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= 33) ActivityCompat.requestPermissions(
             this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), requestNotifications
@@ -83,6 +92,9 @@ class MainActivity : Activity() {
             else request?.deny()
             if (::web.isInitialized) web.evaluateJavascript("window.dispatchEvent(new Event('ember-mic-permission-result'))", null)
         }
+        if (requestCode == requestOther && ::web.isInitialized) {
+            web.evaluateJavascript("window.dispatchEvent(new Event('ember-permission-refresh'))", null)
+        }
         if (requestCode == requestNotifications && ::web.isInitialized) {
             web.evaluateJavascript("window.dispatchEvent(new Event('ember-permission-refresh'))", null)
         }
@@ -91,6 +103,10 @@ class MainActivity : Activity() {
     private fun openPermission(name: String) {
         val intent = when (name) {
             "microphone" -> { requestMicPermission(); return }
+            "camera" -> { requestRuntime(Manifest.permission.CAMERA); return }
+            "location" -> { requestRuntime(Manifest.permission.ACCESS_FINE_LOCATION); return }
+            "contacts" -> { requestRuntime(Manifest.permission.READ_CONTACTS); return }
+            "calendar" -> { requestRuntime(Manifest.permission.READ_CALENDAR); return }
             "notifications" -> {
                 if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                     requestNotificationPermission(); return
@@ -104,7 +120,6 @@ class MainActivity : Activity() {
             "usage" -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
             "battery" -> Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
             "app_info" -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
-            "camera", "location", "contacts", "calendar" -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
             else -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
         }
         try { startActivity(intent) } catch (_: Exception) { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
@@ -123,6 +138,10 @@ class MainActivity : Activity() {
             val power = getSystemService(POWER_SERVICE) as PowerManager
             return JSONObject()
                 .put("microphone", ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+                .put("camera", ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+                .put("location", ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)
+                .put("contacts", ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED)
+                .put("calendar", ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED)
                 .put("notifications", Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
                 .put("notification_access", enabledNotif.contains(packageName + "/" + EmberNotificationListener::class.java.name, true))
                 .put("accessibility", enabledA11y.contains(packageName + "/" + EmberAccessibilityService::class.java.name, true))
@@ -149,6 +168,12 @@ class MainActivity : Activity() {
                 stopService(Intent(this@MainActivity, EmberKeepAliveService::class.java))
                 web.evaluateJavascript("window.dispatchEvent(new Event('ember-service-stopped'))", null)
             }
+        }
+        @JavascriptInterface fun act(actionJson: String): String {
+            return try {
+                val action = JSONObject(actionJson)
+                EmberAccessibilityService.perform(action)
+            } catch (e: Exception) { "ERROR: " + (e.message ?: "Invalid action") }
         }
         @JavascriptInterface fun saveScale(scale: Float) {
             getSharedPreferences("ember_display", MODE_PRIVATE).edit().putFloat("scale", scale.coerceIn(0.8f, 1.5f)).apply()
