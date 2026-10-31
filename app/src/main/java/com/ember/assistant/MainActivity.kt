@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -50,13 +51,13 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
 
-private val EmberBg = Color(0xFF070B12)
-private val EmberPanel = Color(0xFF101A27)
-private val EmberLine = Color(0xFF214052)
-private val EmberCyan = Color(0xFF55E7F2)
-private val EmberAmber = Color(0xFFFFB84D)
-private val EmberText = Color(0xFFE5F3F7)
-private val EmberMuted = Color(0xFF7E9BA8)
+private val EmberBg = Color(0xFF00060A)
+private val EmberPanel = Color(0xFF010D14)
+private val EmberLine = Color(0xFF0D3347)
+private val EmberCyan = Color(0xFF00D4FF)
+private val EmberAmber = Color(0xFFFF6B00)
+private val EmberText = Color(0xFFD8F8FF)
+private val EmberMuted = Color(0xFF3A8A9A)
 
 data class ChatLine(val fromUser: Boolean, val text: String)
 
@@ -188,81 +189,110 @@ private fun EmberApp(
         }
     }
 
-    Row(Modifier.fillMaxSize().background(EmberBg).padding(12.dp)) {
-        Column(Modifier.weight(0.22f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            HudPanel("SYSTEM MONITOR") {
-                Metric("CPU", "—")
-                Metric("MEM", "—")
-                Metric("NET", "ONLINE")
-                Metric("GPU", "N/A")
-                Metric("TMP", "—")
+    Column(Modifier.fillMaxSize().background(EmberBg)) {
+        Row(
+            Modifier.fillMaxWidth().height(42.dp).background(Color(0xFF000D14))
+                .border(width = 1.dp, color = Color(0xFF1A5C7A)),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("EMBER", Modifier.padding(start = 12.dp), color = EmberMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            HudButton("⚙") { keyDraft = apiKey; showSettings = true }
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("EMBER", color = EmberCyan, fontSize = 19.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Text("A FRIENDLY ASSISTANT", color = EmberMuted, fontSize = 8.sp, letterSpacing = 1.sp)
             }
-            HudPanel("SYSTEM LOG") {
-                Text(status, color = EmberCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                if (error.isNotBlank()) Text(error, color = EmberAmber, fontSize = 10.sp)
+            Column(Modifier.padding(end = 12.dp), horizontalAlignment = Alignment.End) {
+                Text(if (busy) "THINKING" else "ONLINE", color = if (busy) EmberAmber else Color(0xFF00FF88), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(if (micGranted) "MIC READY" else "MIC LOCKED", color = EmberMuted, fontSize = 8.sp)
             }
-            Spacer(Modifier.weight(1f))
-            HudButton("SETTINGS") { keyDraft = apiKey; showSettings = true }
         }
-
-        Column(Modifier.weight(0.56f).fillMaxHeight().padding(horizontal = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("EMBER", color = EmberCyan, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = 5.sp)
-                Text("CYBER PULSE  /  NATIVE ANDROID", color = EmberMuted, fontSize = 9.sp)
-                Text(if (busy) "THINKING" else "ONLINE", color = if (busy) EmberAmber else EmberCyan, fontSize = 10.sp)
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+            Column(
+                Modifier.weight(.17f).fillMaxHeight().background(Color(0xFF000D14))
+                    .border(width = 1.dp, color = EmberLine).padding(7.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                Text("◈ SYS MONITOR", color = EmberCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Divider(color = EmberLine)
+                MetricBar("CPU", 22, EmberCyan)
+                MetricBar("MEM", 48, Color(0xFFFFCC00))
+                MetricBar("NET", 8, Color(0xFF00FF88))
+                MetricBar("GPU", 14, EmberAmber)
+                MetricBar("TMP", 41, Color(0xFFFF6688))
+                Spacer(Modifier.height(3.dp))
+                HudPanel("SYSTEM") {
+                    Text("UP  ACTIVE", color = Color(0xFF00FF88), fontSize = 9.sp)
+                    Text("OS  ANDROID", color = Color(0xFFFFCC00), fontSize = 9.sp)
+                    Text("CORE  ONLINE", color = EmberCyan, fontSize = 9.sp)
+                }
+                Spacer(Modifier.weight(1f))
+                StatusTag("AI CORE", "ACTIVE", Color(0xFF00FF88))
+                StatusTag("SECURITY", "CLEARED", EmberCyan)
+                StatusTag("PROTOCOL", "EMBER", EmberMuted)
             }
-            Spacer(Modifier.height(8.dp))
-            Box(Modifier.weight(0.48f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                NativeFace()
+            Box(Modifier.weight(.48f).fillMaxHeight().background(EmberBg)) {
+                NativeFace(if (busy) "THINKING" else "LISTENING", false)
             }
-            Text("EMBER CORE", color = EmberCyan, fontSize = 13.sp, letterSpacing = 4.sp, fontWeight = FontWeight.Bold)
-            Text(if (busy) "PROCESSING REQUEST" else "READY FOR INPUT", color = EmberMuted, fontSize = 9.sp, letterSpacing = 2.sp)
-            Spacer(Modifier.height(8.dp))
-            HudPanel("CONVERSATION") {
-                LazyColumn(Modifier.fillMaxWidth().heightIn(min = 70.dp, max = 170.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                Modifier.weight(.35f).fillMaxHeight().background(Color(0xFF000D14))
+                    .border(width = 1.dp, color = EmberLine).padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text("▸ ACTIVITY LOG", color = Color(0xFF5AB8CC), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxWidth().background(EmberPanel)
+                        .border(1.dp, EmberLine).padding(7.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (chat.isEmpty()) item { Text("EMBER SYSTEM INITIALISED\nAwaiting command input...", color = EmberMuted, fontSize = 10.sp) }
                     items(chat) { line ->
-                        Column(Modifier.fillMaxWidth(), horizontalAlignment = if (line.fromUser) Alignment.End else Alignment.Start) {
-                            Text(if (line.fromUser) "YOU" else "EMBER", color = if (line.fromUser) EmberAmber else EmberCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                            Text(line.text, color = EmberText, fontSize = 12.sp)
+                        Column {
+                            Text(if (line.fromUser) "YOU:" else "EMBER:", color = if (line.fromUser) EmberText else EmberCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text(line.text, color = EmberText, fontSize = 10.sp)
                         }
                     }
-                    if (chat.isEmpty()) item { Text("Your conversation will appear here.", color = EmberMuted, fontSize = 11.sp) }
+                    if (error.isNotBlank()) item { Text("ERR: $error", color = Color(0xFFFF3355), fontSize = 9.sp) }
                 }
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                BasicTextField(
-                    value = input, onValueChange = { input = it },
-                    modifier = Modifier.weight(1f).background(EmberPanel, RoundedCornerShape(12.dp)).border(1.dp, EmberLine, RoundedCornerShape(12.dp)).padding(12.dp),
-                    textStyle = androidx.compose.ui.text.TextStyle(color = EmberText, fontSize = 13.sp),
-                    decorationBox = { inner -> if (input.isEmpty()) Text("Enter a command for Ember...", color = EmberMuted, fontSize = 12.sp); inner() }
-                )
-                HudButton("SEND", enabled = !busy && input.isNotBlank()) {
-                    val prompt = input.trim()
-                    input = ""
-                    sendNativeMessage(prompt, apiKey, chat, scope, speak,
-                        onBusy = { busy = it }, onStatus = { status = it }, onError = { error = it })
+                Divider(color = EmberLine)
+                Text("▸ FILE UPLOAD", color = Color(0xFF5AB8CC), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Box(
+                    Modifier.fillMaxWidth().height(55.dp).background(Color(0xFF010F18))
+                        .border(1.dp, EmberLine).clickable { status = "FILE PICKER NOT YET CONNECTED" },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("＋  DROP OR SELECT FILE", color = EmberMuted, fontSize = 9.sp)
                 }
-                HudButton("MIC", enabled = !busy) {
-                    if (micGranted) launchVoice() else requestMic()
+                Text("No file loaded", color = EmberMuted, fontSize = 8.sp)
+                Divider(color = EmberLine)
+                Text("▸ COMMAND INPUT", color = Color(0xFF5AB8CC), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    BasicTextField(
+                        value = input, onValueChange = { input = it },
+                        modifier = Modifier.weight(1f).background(Color(0xFF000D14))
+                            .border(1.dp, EmberLine).padding(8.dp),
+                        textStyle = androidx.compose.ui.text.TextStyle(color = EmberText, fontSize = 10.sp),
+                        decorationBox = { inner -> if (input.isEmpty()) Text("Type a command...", color = EmberMuted, fontSize = 9.sp); inner() }
+                    )
+                    HudButton("▸", enabled = !busy && input.isNotBlank()) {
+                        val prompt = input.trim()
+                        input = ""
+                        sendNativeMessage(prompt, apiKey, chat, scope, speak,
+                            onBusy = { busy = it }, onStatus = { status = it }, onError = { error = it })
+                    }
+                    HudButton("MIC", enabled = !busy) { if (micGranted) launchVoice() else requestMic() }
                 }
+                HudButton("✋  INTERRUPT  [ESC]") { status = "INTERRUPT REQUESTED" }
+                HudButton(if (micGranted) "🎙  MICROPHONE ACTIVE" else "MICROPHONE LOCKED") { if (micGranted) launchVoice() else requestMic() }
             }
         }
-
-        Column(Modifier.weight(0.22f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            HudPanel("QUICK ACTIONS") {
-                HudButton("VOICE OUTPUT") { if (chat.isNotEmpty()) speak(chat.last().text) }
-                HudButton("INTERRUPT") { status = "VOICE STOP REQUESTED" }
-                HudButton("CLEAR CHAT") { chat.clear() }
-                HudButton("PERMISSIONS") { keyDraft = apiKey; showSettings = true }
-            }
-            HudPanel("SESSION") {
-                Metric("AI", "GEMINI")
-                Metric("VOICE", if (micGranted) "READY" else "LOCKED")
-                Metric("MODE", "NATIVE")
-            }
+        Row(
+            Modifier.fillMaxWidth().height(22.dp).background(Color(0xFF000D14))
+                .border(width = 1.dp, color = EmberLine).padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("[F4] Mute  ·  [F11] Fullscreen", color = Color(0xFF5AB8CC), fontSize = 8.sp)
             Spacer(Modifier.weight(1f))
-            Text("DarthWolf  •  Cyber Pulse", color = EmberMuted, fontSize = 9.sp)
+            Text("Cyber Pulse  •  DarthWolf", color = EmberMuted, fontSize = 8.sp)
         }
     }
 
@@ -302,34 +332,102 @@ private fun EmberApp(
 }
 
 @Composable
-private fun NativeFace() {
-    val transition = rememberInfiniteTransition(label = "ember-face")
-    val pulse by transition.animateFloat(
-        initialValue = 0.82f, targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(tween(1800), RepeatMode.Reverse), label = "pulse"
+private fun NativeFace(state: String, muted: Boolean) {
+    val transition = rememberInfiniteTransition(label = "ember-hologram")
+    val phase by transition.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(3600), RepeatMode.Restart), label = "scan"
     )
     Canvas(Modifier.fillMaxSize()) {
-        val cx = size.width / 2f
-        val cy = size.height / 2f
-        val radius = minOf(size.width, size.height) * .34f * pulse
-        for (i in 0..3) {
-            drawCircle(EmberCyan.copy(alpha = .10f - i * .015f), radius = radius + i * 16f,
-                center = Offset(cx, cy), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.2f))
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        val cy = h * .43f
+        val unit = minOf(w, h)
+        val faceW = unit * .25f
+        val faceH = unit * .34f
+        val glow = if (muted) Color(0xFFFF3355) else if (state == "THINKING") EmberAmber else EmberCyan
+        for (x in 0..(w / 30f).toInt()) for (y in 0..(h / 30f).toInt()) {
+            drawCircle(EmberCyan.copy(alpha = .12f), 1.dp.toPx(), Offset(x * 30f, y * 30f))
         }
-        drawCircle(EmberCyan.copy(alpha = .07f), radius = radius * .78f, center = Offset(cx, cy))
-        val faceW = radius * .86f
-        val faceH = radius * 1.13f
-        drawOval(EmberPanel, topLeft = Offset(cx - faceW, cy - faceH), size = androidx.compose.ui.geometry.Size(faceW * 2, faceH * 2))
-        drawOval(EmberCyan.copy(alpha = .65f), topLeft = Offset(cx - faceW, cy - faceH), size = androidx.compose.ui.geometry.Size(faceW * 2, faceH * 2),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
-        val eyeY = cy - radius * .18f
-        drawLine(EmberCyan, Offset(cx - radius * .53f, eyeY), Offset(cx - radius * .13f, eyeY), 4f, cap = StrokeCap.Round)
-        drawLine(EmberCyan, Offset(cx + radius * .13f, eyeY), Offset(cx + radius * .53f, eyeY), 4f, cap = StrokeCap.Round)
-        drawLine(EmberAmber.copy(alpha = .8f), Offset(cx - radius * .25f, cy + radius * .42f), Offset(cx + radius * .25f, cy + radius * .42f), 2f, cap = StrokeCap.Round)
-        for (i in 0..12) {
-            val y = cy - radius * .75f + i * radius * .115f
-            drawLine(EmberCyan.copy(alpha = .13f), Offset(cx - faceW * .8f, y), Offset(cx + faceW * .8f, y), 1f)
+        for (i in 0..4) {
+            drawCircle(glow.copy(alpha = .10f - i * .014f), unit * (.29f + i * .045f), Offset(cx, cy),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
         }
+        drawCircle(Color.Transparent, unit * .28f, Offset(cx, cy),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(5f, 8f))))
+        val left = cx - faceW
+        val right = cx + faceW
+        val top = cy - faceH
+        val bottom = cy + faceH
+        val outline = androidx.compose.ui.graphics.Path().apply {
+            moveTo(cx, top)
+            cubicTo(left + faceW * .2f, top, left - faceW * .05f, cy - faceH * .1f, left + faceW * .18f, cy + faceH * .55f)
+            cubicTo(left + faceW * .35f, bottom, right - faceW * .35f, bottom, right - faceW * .18f, cy + faceH * .55f)
+            cubicTo(right + faceW * .05f, cy - faceH * .1f, right - faceW * .2f, top, cx, top)
+            close()
+        }
+        drawPath(outline, Color(0xFF001520).copy(alpha = .8f))
+        drawPath(outline, glow.copy(alpha = .9f), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
+        // Faceted hologram mesh
+        val rows = 12
+        for (i in 1 until rows) {
+            val y = top + (bottom - top) * i / rows
+            val half = faceW * (if (i < 3) .45f + i * .12f else if (i > 9) .88f - (i - 9) * .15f else 1f)
+            drawLine(glow.copy(alpha = .22f), Offset(cx - half, y), Offset(cx + half, y), 1.dp.toPx())
+        }
+        for (i in -5..5) {
+            val x = cx + i * faceW / 5f
+            drawLine(glow.copy(alpha = .16f), Offset(cx + (x-cx)*.15f, top + faceH*.12f), Offset(x, bottom - faceH*.06f), 1.dp.toPx())
+        }
+        val eyeY = cy - faceH * .12f
+        drawLine(glow, Offset(cx - faceW*.62f, eyeY), Offset(cx - faceW*.12f, eyeY - faceH*.015f), 3.dp.toPx(), cap = StrokeCap.Round)
+        drawLine(glow, Offset(cx + faceW*.12f, eyeY - faceH*.015f), Offset(cx + faceW*.62f, eyeY), 3.dp.toPx(), cap = StrokeCap.Round)
+        drawLine(glow.copy(alpha=.8f), Offset(cx, eyeY + faceH*.05f), Offset(cx-faceW*.08f, cy+faceH*.25f), 1.dp.toPx())
+        drawLine(glow.copy(alpha=.8f), Offset(cx-faceW*.08f, cy+faceH*.25f), Offset(cx+faceW*.08f, cy+faceH*.25f), 1.dp.toPx())
+        drawLine(glow, Offset(cx-faceW*.25f, cy+faceH*.48f), Offset(cx+faceW*.25f, cy+faceH*.48f), 2.dp.toPx(), cap = StrokeCap.Round)
+        val scanY = top + (bottom-top)*phase
+        drawLine(EmberCyan.copy(alpha=.75f), Offset(left-faceW*.1f, scanY), Offset(right+faceW*.1f, scanY), 1.dp.toPx())
+        val label = if (state == "THINKING") "◈  THINKING" else "●  LISTENING"
+        drawContext.canvas.nativeCanvas.apply {
+            val paint = android.graphics.Paint().apply {
+                color = glow.toArgb()
+                textAlign = android.graphics.Paint.Align.CENTER
+                textSize = 13.sp.toPx()
+                typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
+            }
+            drawText(label, cx, bottom + unit*.11f, paint)
+        }
+        val waveY = bottom + unit*.16f
+        for (i in 0 until 36) {
+            val env = 1f - kotlin.math.abs(i - 17.5f) / 18f
+            val amp = (3f + 12f * env * kotlin.math.abs(kotlin.math.sin(phase * 6.28f + i*.7f))).coerceAtLeast(2f)
+            drawLine(glow.copy(alpha=.75f), Offset(cx - 72.dp.toPx() + i*4.dp.toPx(), waveY),
+                Offset(cx - 72.dp.toPx() + i*4.dp.toPx(), waveY - amp), 2.dp.toPx())
+        }
+    }
+}
+
+
+@Composable
+private fun MetricBar(name: String, value: Int, color: Color) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(name, color = EmberMuted, fontSize = 9.sp)
+            Text("$value%", color = color, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        }
+        Box(Modifier.fillMaxWidth().height(4.dp).background(Color(0xFF011520))) {
+            Box(Modifier.fillMaxWidth(value / 100f).fillMaxHeight().background(color))
+        }
+    }
+}
+
+@Composable
+private fun StatusTag(title: String, value: String, color: Color) {
+    Column(Modifier.fillMaxWidth().background(Color(0xFF010F18)).border(1.dp, EmberLine).padding(5.dp),
+        horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(title, color = EmberMuted, fontSize = 8.sp)
+        Text(value, color = color, fontSize = 9.sp, fontWeight = FontWeight.Bold)
     }
 }
 
