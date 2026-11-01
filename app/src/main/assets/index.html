@@ -210,7 +210,8 @@ const wy=sy+30,N=36,bw=8,wx0=(W-N*bw)/2,mid=(N-1)/2;for(let i=0;i<N;i++){let hg,
 requestAnimationFrame(draw)}
 
 // Gemini-only chat transport. No other provider is contacted.
-const HIST=[],mdl={},ki={};let abortC=null;const NAT=()=>window.EmberNative||null;
+const HIST=(()=>{try{const v=JSON.parse(localStorage.getItem("ember_history")||"[]");return Array.isArray(v)?v.filter(m=>m&&["user","assistant"].includes(m.role)&&typeof m.content==="string").slice(-40):[]}catch(e){return[]}})(),mdl={},ki={};let abortC=null;const NAT=()=>window.EmberNative||null;
+function persistHistory(){try{localStorage.setItem("ember_history",JSON.stringify(HIST.slice(-40)))}catch(e){}}
 try{const saved=JSON.parse(localStorage.getItem("ember_cfg")||"{}"),legacy=saved.prov?.gemini?.k||[],secure=JSON.parse(NAT()?.loadSecret?.()||"{\"keys\":[]}");if(Array.isArray(secure.keys)&&secure.keys.length)CFG.prov.gemini.k=secure.keys;else if(legacy.length){CFG.prov.gemini.k=legacy;NAT()?.saveSecret?.(JSON.stringify({keys:legacy}))}csave()}catch(e){}
 function cands(){return CFG.prov.gemini.on&&CFG.prov.gemini.k.length?["gemini"]:[]}
 function sysPrompt(){let m=[];try{m=JSON.parse(localStorage.getItem("ember_mem")||"[]")}catch(e){}
@@ -245,9 +246,9 @@ setTimeout(done,Math.min(9000,600+t.length*45))}
 function stopAll(){if(abortC)abortC.abort();try{speechSynthesis.cancel()}catch(e){}try{NAT()?.stopSpeak?.()}catch(e){}}
 async function send(txt){const i=$("#inp"),t=(typeof txt=="string"?txt:i.value).trim();if(!t)return;i.value="";log("YOU: "+t);
 if(CFG.prv.kill){log("ERR: Kill switch is on — tools and speech are blocked.");return}
-stopAll();abortC=new AbortController();setState("THINKING");HIST.push({role:"user",content:t});
-try{const raw=await ask(),clean=await runActs(raw);HIST.push({role:"assistant",content:raw});if(clean){log(`${S.name.toUpperCase()}: ${clean}`);speak(clean)}else setState("LISTENING")}
-catch(e){if(e&&e.name=="AbortError")return;setState("LISTENING");HIST.pop();log(e&&e.none?"ERR: Add a Gemini API key in SETTINGS · API KEYS.":"ERR: Gemini request failed — "+(e?.message||(e?.status?("HTTP "+e.status):"network error")))}}
+stopAll();abortC=new AbortController();setState("THINKING");HIST.push({role:"user",content:t});persistHistory();
+try{const raw=await ask(),clean=await runActs(raw);HIST.push({role:"assistant",content:raw});persistHistory();if(clean){log(`${S.name.toUpperCase()}: ${clean}`);speak(clean)}else setState("LISTENING")}
+catch(e){if(e&&e.name=="AbortError")return;setState("LISTENING");HIST.pop();persistHistory();log(e&&e.none?"ERR: Add a Gemini API key in SETTINGS · API KEYS.":"ERR: Gemini request failed — "+(e?.message||(e?.status?("HTTP "+e.status):"network error")))}}
 function interrupt(){const was=state=="SPEAKING"||state=="THINKING";stopAll();if(was)log("SYS: Interrupted.");setState("LISTENING")}
 window.ember={send:t=>send(String(t)),onSpeech:t=>send(String(t)),get config(){return CFG}};
 function styleMute(){const b=$("#mute");b.classList.toggle("m",S.muted);b.textContent=S.muted?"🔇  UNMUTE MICROPHONE":"🎙  MUTE MICROPHONE"}
