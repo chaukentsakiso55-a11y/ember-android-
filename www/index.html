@@ -102,9 +102,9 @@ const step=()=>{d.textContent=t.slice(0,i+=Math.max(1,Math.ceil(t.length/70)));l
 const M=[["CPU","PRI"],["MEM","ACC2"],["NET","GREEN"],["GPU","ACC"],["TMP","#ff6688"]];let mv=[22,48,8,14,41];
 $("#bars").innerHTML=M.map((m,i)=>`<div class="mb"><span>${m[0]}</span><em id="mt${i}"></em><div><u id="mu${i}" style="background:${m[1][0]=="#"?m[1]:`var(--${m[1]})`}"></u></div></div>`).join("");
 const t0=Date.now();
-function metrics(){mv=mv.map((v,i)=>Math.max(2,Math.min(i==4?75:98,v+(Math.random()-.5)*(S.state=="SPEAKING"?18:9))));
-mv.forEach((v,i)=>{const bc=v>85?"var(--RED)":v>65?"var(--ACC)":M[i][1][0]=="#"?M[i][1]:`var(--${M[i][1]})`;$("#mu"+i).style.width=v+"%";$("#mu"+i).style.background=bc;$("#mt"+i).textContent=i==4?Math.round(v)+"°C":Math.round(v)+"%";$("#mt"+i).style.color=bc});
-const s=Math.floor((Date.now()-t0)/1000);$("#up").textContent=`UP  ${String(Math.floor(s/3600)).padStart(2,"0")}:${String(Math.floor(s/60)%60).padStart(2,"0")}`;$("#pr").textContent="PROC  "+(180+Math.floor(Math.random()*6))}
+function metrics(){let real=null;try{if(NAT()?.metrics)real=JSON.parse(NAT().metrics())}catch(e){}if(!real){mv=mv.map((v,i)=>Math.max(2,Math.min(i==4?75:98,v+(Math.random()-.5)*(S.state=="SPEAKING"?18:9))))}else{mv=[real.cpu||0,real.mem||0,Math.min(100,(real.netKb||0)),real.bat>=0?real.bat:0,real.tmp>=0?real.tmp:0]}
+mv.forEach((v,i)=>{const bc=v>85?"var(--RED)":v>65?"var(--ACC)":M[i][1][0]=="#"?M[i][1]:`var(--${M[i][1]})`;$("#mu"+i).style.width=Math.max(0,Math.min(100,v))+"%";$("#mu"+i).style.background=bc;$("#mt"+i).textContent=i==2?(real?(real.netKb||0)+" KB/s":Math.round(v)+"%"):i==4?(real&&real.tmp>=0?real.tmp.toFixed(1)+"°C":"—"):i==0&&real?"—".replace("—",String(Math.round(v))+"%"):Math.round(v)+"%";$("#mt"+i).style.color=bc});
+const sec=real?real.up:Math.floor((Date.now()-t0)/1000);$("#up").textContent=`UP  ${String(Math.floor(sec/3600)).padStart(2,"0")}:${String(Math.floor(sec/60)%60).padStart(2,"0")}`;$("#pr").textContent=real?"PROC  EMBER":"PROC  "+(180+Math.floor(Math.random()*6))}
 function clock(){const d=new Date(),p=n=>String(n).padStart(2,"0");$("#clk").textContent=`${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 $("#dt").textContent=d.toLocaleDateString("en-GB",{weekday:"short",day:"2-digit",month:"short",year:"numeric"}).replace(/,/g,"")}
 // state
@@ -215,18 +215,20 @@ function cands(){return CFG.prov.gemini.on&&CFG.prov.gemini.k.length?["gemini"]:
 function sysPrompt(){let m=[];try{m=JSON.parse(localStorage.getItem("ember_mem")||"[]")}catch(e){}
  let s=`You are ${S.name}, a friendly personal AI assistant. Address the user as ${S.user||"sir"}. Keep replies short and spoken-style.`+(m.length?` Things to remember about the user: ${m.join("; ")}.`:"");
  if(CFG.app.master&&CFG.aut.desktop)s+=` You can operate the user's phone. To act, add one or more lines like [[ACTION {"type":"open_app","name":"WhatsApp"}]] after your reply. Types: open_app{name}, tap{text|x,y}, type{text}, swipe{dir}, back, home, read_screen, send_message{to,text}, call{to}, set_alarm{time,label}, read_notifications. Never act without being asked.`;return s}
-async function callGemini(key,sig){
- const p=CFG.prov.gemini,model=(p.m||"gemini-2.5-flash").trim();
+async function callGemini(key,sig,modelOverride){
+ if(sig?.aborted)throw new DOMException("Aborted","AbortError");
+ const p=CFG.prov.gemini,model=(modelOverride||p.m||"gemini-2.5-flash").trim();
  const contents=HIST.slice(-20).map(m=>({role:m.role==="assistant"?"model":"user",parts:[{text:m.content}]}));
- const url="https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent";
- const r=await fetch(url,{method:"POST",signal:sig,headers:{"Content-Type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:sysPrompt()}]},contents,generationConfig:{temperature:Math.max(0,Math.min(1,+CFG.r.temp||0.7)),maxOutputTokens:1024}})});
- const data=await r.json().catch(()=>({}));
- if(!r.ok)throw{status:r.status,message:data.error?.message||("HTTP "+r.status)};
+ const body=JSON.stringify({systemInstruction:{parts:[{text:sysPrompt()}]},contents,generationConfig:{temperature:Math.max(0,Math.min(1,+CFG.r.temp||0.7)),maxOutputTokens:1024}});
+ let data,status;
+ if(NAT()?.gemini){const response=JSON.parse(NAT().gemini("chat",body,key,model));status=response.status;data=JSON.parse(response.body||"{}")}
+ else{const url="https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent";const r=await fetch(url,{method:"POST",signal:sig,headers:{"Content-Type":"application/json","x-goog-api-key":key},body});status=r.status;data=await r.json().catch(()=>({}))}
+ if(status<200||status>=300)throw{status,message:data.error?.message||("HTTP "+status)};
  const answer=(data.candidates?.[0]?.content?.parts||[]).map(x=>x.text||"").join("").trim();
  if(!answer)throw{message:"Gemini returned an empty response. Check model access or safety filtering."};
  return answer;
 }
-async function ask(){const key=CFG.prov.gemini.k[0];if(!key)throw{none:1};return callGemini(key,abortC.signal)}
+async function ask(){const keys=CFG.prov.gemini.k||[];if(!keys.length)throw{none:1};const models=[(CFG.prov.gemini.m||"gemini-2.5-pro"),"gemini-2.5-flash","gemini-2.5-flash-lite"];let last;for(const model of [...new Set(models)]){for(const key of keys){try{const answer=await callGemini(key,abortC.signal,model);if(model!==models[0])log("SYS: Gemini fallback answered with "+model);return answer}catch(e){last=e;if(e?.name==="AbortError")throw e;if(![0,429,500,502,503,504].includes(e?.status)&&e?.status<500)throw e}}}throw last||{message:"All Gemini models are unavailable"}}
 
 function confirmAct(a){return new Promise(res=>{opn(`<h2>⚠  CONFIRM</h2><p>${esc(S.name)} wants to: <b style="color:var(--WHITE)">${esc(a.type)}</b> ${esc(JSON.stringify(a).slice(0,160))}</p><div class=row><button class=bb id=cy>▸  CONFIRM</button><button class="bb d" id=cn2>CANCEL</button></div>`);$("#cy").onclick=()=>{cls();res(1)};$("#cn2").onclick=()=>{cls();res(0)};});}
 async function runActs(text){const re=/\[\[ACTION\s*(\{.*?\})\s*\]\]/g,acts=[];let m;while(m=re.exec(text)){try{acts.push(JSON.parse(m[1]))}catch(e){}}const clean=text.replace(re,"").trim();
