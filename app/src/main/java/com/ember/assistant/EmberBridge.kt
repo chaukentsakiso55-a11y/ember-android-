@@ -17,6 +17,8 @@ import androidx.security.crypto.MasterKey
 import org.json.JSONObject
 import java.util.Locale
 import java.util.concurrent.Executors
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlin.math.max
 
 class EmberBridge(private val context: Context, private val webView: WebView) {
@@ -43,6 +45,30 @@ class EmberBridge(private val context: Context, private val webView: WebView) {
     @JavascriptInterface fun loadSecret(): String =
         prefs.getString("gemini_keys", "{\"keys\":[]}") ?: "{\"keys\":[]}"
 
+    @JavascriptInterface fun gemini(id: String, bodyJson: String, key: String, model: String): String = try {
+        val url = URL("https://generativelanguage.googleapis.com/v1beta/models/" + java.net.URLEncoder.encode(model, "UTF-8") + ":generateContent")
+        val conn = (url.openConnection() as HttpURLConnection).apply { requestMethod = "POST"; connectTimeout = 15000; readTimeout = 45000; doOutput = true; setRequestProperty("Content-Type", "application/json"); setRequestProperty("x-goog-api-key", key) }
+        conn.outputStream.use { it.write(bodyJson.toByteArray(Charsets.UTF_8)) }
+        val code = conn.responseCode
+        val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+        val body = stream?.bufferedReader()?.use { it.readText() } ?: "{}"
+        conn.disconnect()
+        JSONObject().put("status", code).put("body", body).toString()
+    } catch (e: Exception) { JSONObject().put("status", 0).put("body", JSONObject().put("error", JSONObject().put("message", e.message ?: "Network error")).toString()).toString() }
+
+    @JavascriptInterface fun act(actionJson: String): String {
+        val a = JSONObject(actionJson); val type = a.optString("type")
+        return try {
+            when (type) {
+                "open_app" -> openApp(a.optString("name"))
+                "set_alarm" -> setAlarm(a.optString("time"), a.optString("label", "EMBER reminder"))
+                "call" -> { val i = Intent(Intent.ACTION_DIAL, android.net.Uri.parse("tel:" + a.optString("to"))); i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); context.startActivity(i); record(type, "dialler opened"); "DIALER_OPENED" }
+                "send_message" -> { val i = Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:" + a.optString("to"))); i.putExtra("sms_body", a.optString("text")); i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); context.startActivity(i); record(type, "message composer opened"); "COMPOSER_OPENED" }
+                else -> { record(type, "unsupported on this build"); "UNSUPPORTED" }
+            }
+        } catch (e: Exception) { record(type, "failed"); "ERROR" }
+    }
+
     @JavascriptInterface fun saveScale(value: Float) {
         context.getSharedPreferences("ember_ui", Context.MODE_PRIVATE).edit().putFloat("scale", value.coerceIn(.8f, 1.5f)).apply()
     }
@@ -58,6 +84,10 @@ class EmberBridge(private val context: Context, private val webView: WebView) {
 
     @JavascriptInterface fun stopSpeak() { tts?.stop() }
 
+    private var lastRx = android.net.TrafficStats.getTotalRxBytes()
+    private var lastTx = android.net.TrafficStats.getTotalTxBytes()
+    private var lastMetricAt = SystemClock.elapsedRealtime()
+
     @JavascriptInterface fun metrics(): String {
         val battery = context.registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
@@ -70,15 +100,16 @@ class EmberBridge(private val context: Context, private val webView: WebView) {
         (context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager).getMemoryInfo(mem)
         val used = max(0L, mem.totalMem - mem.availMem)
         val memPct = if (mem.totalMem > 0) (used * 100 / mem.totalMem).toInt() else 0
-        val net = runCatching {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-            val caps = cm.getNetworkCapabilities(cm.activeNetwork)
-            if (caps == null) 0 else 1
-        }.getOrDefault(0)
-        val up = SystemClock.elapsedRealtime() / 1000
+        val now = SystemClock.elapsedRealtime()
+        val rx = android.net.TrafficStats.getTotalRxBytes(); val tx = android.net.TrafficStats.getTotalTxBytes()
+        val seconds = max(1L, (now - lastMetricAt) / 1000L)
+        val kb = if (rx >= 0 && tx >= 0 && lastRx >= 0 && lastTx >= 0) ((rx-lastRx+tx-lastTx).coerceAtLeast(0) / seconds / 1024).toInt() else 0
+        lastRx = rx; lastTx = tx; lastMetricAt = now
+        val cpu = runCatching { val p = java.io.File("/proc/self/stat").readText().split(" "); ((p[13].toLong()+p[14].toLong()) % 100).toInt() }.getOrDefault(0)
+        val up = now / 1000
         return JSONObject().put("bat", pct).put("charging", charging).put("tmp", temp)
-            .put("mem", memPct).put("net", net).put("netKb", 0)
-            .put("cpu", 0).put("up", up).put("gpu", JSONObject.NULL).toString()
+            .put("mem", memPct).put("net", if (kb > 0) 1 else 0).put("netKb", kb)
+            .put("cpu", cpu).put("up", up).put("gpu", JSONObject.NULL).toString()
     }
 
     @JavascriptInterface fun setAlarm(time: String, label: String): String {
