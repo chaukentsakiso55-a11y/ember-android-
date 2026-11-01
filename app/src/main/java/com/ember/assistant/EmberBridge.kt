@@ -133,8 +133,12 @@ class EmberBridge(private val context: Context, private val webView: WebView) {
 
     @JavascriptInterface fun openApp(label: String): String {
         val pm = context.packageManager
-        val matches = if (Build.VERSION.SDK_INT >= 33) pm.getInstalledApplications(android.content.pm.PackageManager.ApplicationInfoFlags.of(0))
-                      else @Suppress("DEPRECATION") pm.getInstalledApplications(0)
+        val matches = if (Build.VERSION.SDK_INT >= 33) {
+            pm.getInstalledApplications(android.content.pm.PackageManager.ApplicationInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstalledApplications(0)
+        }
         val app = matches.firstOrNull { runCatching { pm.getApplicationLabel(it).toString().equals(label, true) }.getOrDefault(false) }
         val launch = app?.let { pm.getLaunchIntentForPackage(it.packageName) }
         return if (launch != null) {
