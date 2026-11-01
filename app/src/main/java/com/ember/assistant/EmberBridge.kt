@@ -1,7 +1,5 @@
 package com.ember.assistant
 
-import android.app.AlarmManager
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.BatteryManager
@@ -10,13 +8,12 @@ import android.os.SystemClock
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
-import androidx.core.content.ContextCompat
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import org.json.JSONObject
 import java.util.Locale
 import java.util.concurrent.Executors
+import android.os.Process
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.max
@@ -84,9 +81,10 @@ class EmberBridge(private val context: Context, private val webView: WebView) {
 
     @JavascriptInterface fun stopSpeak() { tts?.stop() }
 
-    private var lastRx = android.net.TrafficStats.getTotalRxBytes()
-    private var lastTx = android.net.TrafficStats.getTotalTxBytes()
+    private var lastRx = android.net.TrafficStats.getUidRxBytes(Process.myUid())
+    private var lastTx = android.net.TrafficStats.getUidTxBytes(Process.myUid())
     private var lastMetricAt = SystemClock.elapsedRealtime()
+    private var lastCpuMs = Process.getElapsedCpuTime()
 
     @JavascriptInterface fun metrics(): String {
         val battery = context.registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
@@ -101,11 +99,15 @@ class EmberBridge(private val context: Context, private val webView: WebView) {
         val used = max(0L, mem.totalMem - mem.availMem)
         val memPct = if (mem.totalMem > 0) (used * 100 / mem.totalMem).toInt() else 0
         val now = SystemClock.elapsedRealtime()
-        val rx = android.net.TrafficStats.getTotalRxBytes(); val tx = android.net.TrafficStats.getTotalTxBytes()
+        val rx = android.net.TrafficStats.getUidRxBytes(Process.myUid()); val tx = android.net.TrafficStats.getUidTxBytes(Process.myUid())
         val seconds = max(1L, (now - lastMetricAt) / 1000L)
         val kb = if (rx >= 0 && tx >= 0 && lastRx >= 0 && lastTx >= 0) ((rx-lastRx+tx-lastTx).coerceAtLeast(0) / seconds / 1024).toInt() else 0
         lastRx = rx; lastTx = tx; lastMetricAt = now
-        val cpu = runCatching { val p = java.io.File("/proc/self/stat").readText().split(" "); ((p[13].toLong()+p[14].toLong()) % 100).toInt() }.getOrDefault(0)
+        val cpuNow = Process.getElapsedCpuTime()
+        val elapsed = max(1L, now - (now - seconds * 1000L))
+        val cpu = (((cpuNow - lastCpuMs).coerceAtLeast(0L).toDouble() / elapsed.toDouble()) * 100.0 /
+            Runtime.getRuntime().availableProcessors().coerceAtLeast(1)).toInt().coerceIn(0, 100)
+        lastCpuMs = cpuNow
         val up = now / 1000
         return JSONObject().put("bat", pct).put("charging", charging).put("tmp", temp)
             .put("mem", memPct).put("net", if (kb > 0) 1 else 0).put("netKb", kb)
