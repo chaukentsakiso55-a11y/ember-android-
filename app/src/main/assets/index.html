@@ -211,7 +211,7 @@ requestAnimationFrame(draw)}
 
 // Gemini-only chat transport. No other provider is contacted.
 const HIST=[],mdl={},ki={};let abortC=null;const NAT=()=>window.EmberNative||null;
-try{const saved=JSON.parse(localStorage.getItem("ember_cfg")||"{}"),legacy=saved.prov?.gemini?.k||[],secure=JSON.parse(NAT()?.loadSecret?.()||"{\\"keys\\":[]}");if(Array.isArray(secure.keys)&&secure.keys.length)CFG.prov.gemini.k=secure.keys;else if(legacy.length){CFG.prov.gemini.k=legacy;NAT()?.saveSecret?.(JSON.stringify({keys:legacy}))}csave()}catch(e){}
+try{const saved=JSON.parse(localStorage.getItem("ember_cfg")||"{}"),legacy=saved.prov?.gemini?.k||[],secure=JSON.parse(NAT()?.loadSecret?.()||"{\"keys\":[]}");if(Array.isArray(secure.keys)&&secure.keys.length)CFG.prov.gemini.k=secure.keys;else if(legacy.length){CFG.prov.gemini.k=legacy;NAT()?.saveSecret?.(JSON.stringify({keys:legacy}))}csave()}catch(e){}
 function cands(){return CFG.prov.gemini.on&&CFG.prov.gemini.k.length?["gemini"]:[]}
 function sysPrompt(){let m=[];try{m=JSON.parse(localStorage.getItem("ember_mem")||"[]")}catch(e){}
  let s=`You are ${S.name}, a friendly personal AI assistant. Address the user as ${S.user||"sir"}. Keep replies short and spoken-style.`+(m.length?` Things to remember about the user: ${m.join("; ")}.`:"");
