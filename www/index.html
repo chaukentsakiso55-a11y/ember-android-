@@ -230,7 +230,7 @@ async function callGemini(key,sig,modelOverride){
  if(!answer)throw{message:"Gemini returned an empty response. Check model access or safety filtering."};
  return answer;
 }
-async function ask(){const keys=CFG.prov.gemini.k||[];if(!keys.length)throw{none:1};const models=[(CFG.prov.gemini.m||"gemini-2.5-pro"),"gemini-2.5-flash","gemini-2.5-flash-lite"];let last;for(const model of [...new Set(models)]){for(const key of keys){try{const answer=await callGemini(key,abortC.signal,model);if(model!==models[0])log("SYS: Gemini fallback answered with "+model);return answer}catch(e){last=e;if(e?.name==="AbortError")throw e}}}throw last||{message:"All Gemini models are unavailable"}}
+async function ask(){const keys=CFG.prov.gemini.k||[];if(!keys.length)throw{none:1};const model=(CFG.prov.gemini.m||"gemini-3.1-pro-preview").trim();let last;for(const key of keys){try{return await callGemini(key,abortC.signal,model)}catch(e){last=e;if(e?.name==="AbortError")throw e;if(![400,403,404].includes(e?.status))continue;}}throw last||{message:"The selected Gemini model is unavailable for these API keys. Fetch available models in Settings → Model."}}
 
 function confirmAct(a){return new Promise(res=>{opn(`<h2>⚠  CONFIRM</h2><p>${esc(S.name)} wants to: <b style="color:var(--WHITE)">${esc(a.type)}</b> ${esc(JSON.stringify(a).slice(0,160))}</p><div class=row><button class=bb id=cy>▸  CONFIRM</button><button class="bb d" id=cn2>CANCEL</button></div>`);$("#cy").onclick=()=>{cls();res(1)};$("#cn2").onclick=()=>{cls();res(0)};});}
 async function runActs(text){const re=/\[\[ACTION\s*(\{.*?\})\s*\]\]/g,acts=[];let m;while(m=re.exec(text)){try{acts.push(JSON.parse(m[1]))}catch(e){}}const clean=text.replace(re,"").trim();
@@ -302,7 +302,7 @@ const PL=["calculator","quick_notes","task_list","quiz","study_planner","text_to
 function plugs(){let P=JSON.parse(localStorage.getItem("ember_pl")||"{}");opn(`<h2>🧩  PLUGIN MANAGER</h2>${PL.map(p=>`<div class=li><span>${p}</span><button class="bb ${P[p]!==false?"on":"d"}" style="height:24px" data-p=${p}>${P[p]!==false?"ON":"OFF"}</button></div>`).join("")}${closeBtn}`);
 box.onclick=e=>{const p=e.target.dataset?.p;if(p){P[p]=P[p]===false;localStorage.setItem("ember_pl",JSON.stringify(P));plugs()}}}
 // ===== Advanced settings (API keys, model, control, apps, privacy, general) =====
-const DEFC={prov:{xkiro:{n:"xKiro",u:"https://api.xkiro.com/v1",t:"o",m:"",on:1,k:[]},openai:{n:"OpenAI",u:"https://api.openai.com/v1",t:"o",m:"",on:1,k:[]},anthropic:{n:"Anthropic Claude",u:"https://api.anthropic.com/v1",t:"a",m:"",on:1,k:[]},groq:{n:"Groq",u:"https://api.groq.com/openai/v1",t:"o",m:"",on:1,k:[]},openrouter:{n:"OpenRouter",u:"https://openrouter.ai/api/v1",t:"o",m:"",on:1,k:[]},gemini:{n:"Google Gemini",u:"https://generativelanguage.googleapis.com/v1beta/openai",t:"o",m:"gemini-2.5-pro",on:1,k:[]},ollama:{n:"Ollama (local)",u:"http://localhost:11434",t:"l",m:"",on:1,k:[]}},
+const DEFC={prov:{xkiro:{n:"xKiro",u:"https://api.xkiro.com/v1",t:"o",m:"",on:1,k:[]},openai:{n:"OpenAI",u:"https://api.openai.com/v1",t:"o",m:"",on:1,k:[]},anthropic:{n:"Anthropic Claude",u:"https://api.anthropic.com/v1",t:"a",m:"",on:1,k:[]},groq:{n:"Groq",u:"https://api.groq.com/openai/v1",t:"o",m:"",on:1,k:[]},openrouter:{n:"OpenRouter",u:"https://openrouter.ai/api/v1",t:"o",m:"",on:1,k:[]},gemini:{n:"Google Gemini",u:"https://generativelanguage.googleapis.com/v1beta/openai",t:"o",m:"gemini-3.1-pro-preview",on:1,k:[]},ollama:{n:"Ollama (local)",u:"http://localhost:11434",t:"l",m:"",on:1,k:[]}},
  r:{def:"gemini",lf:0,mode:"online",lurl:"http://localhost:11434",lmodel:"",temp:"0.7"},
  aut:{desktop:1,game:1,msg:1,wa:0,waall:0,wag:1,contacts:"",poll:"6",par:"4"},
  app:{master:0,confirm:1,block:"",acc:0,launch:1,notif:0,overlay:0,cap:0,sms:0,calls:0,contacts:0,cal:0,files:0,mic:1,cam:0,loc:0,usage:0,bat:0,boot:0},
@@ -316,7 +316,7 @@ const esc=t=>String(t).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const THEMES={amber:"#ffb000",cyber:"#00d4ff",violet:"#a855f7",emerald:"#10e090",rose:"#ff4d7d",mono:"#9aa5ab"};
 const TABS=[["keys","🔑 API KEYS"],["model","🧠 MODEL"],["ctl","🎮 CONTROL"],["apps","📱 APPS"],["prv","🛡 PRIVACY"],["gen","⚙ GENERAL"],["display","◉ DISPLAY"]];
 const APPS=[["acc","Accessibility service — tap, type & swipe inside any app"],["launch","Open & switch between apps"],["notif","Read & reply to notifications"],["overlay","Display over other apps"],["cap","Screen capture / screen understanding"],["sms","Read & send text messages"],["calls","Make & answer calls"],["contacts","Contacts"],["cal","Calendar"],["files","Files & storage"],["mic","Microphone"],["cam","Camera"],["loc","Location"],["usage","App usage access"],["bat","Ignore battery optimisation (stay alive)"],["boot","Start on boot"]];
-let sTab="keys",sOpen="gemini",sMsg={};
+let sTab="keys",sOpen="gemini",sMsg={},geminiModels=[];
 const tgb=(p,l,sub)=>{const on=cget(p);return`<div class=li><span>${l}${sub?`<br><small style="color:var(--TEXT_DIM)">${sub}</small>`:""}</span><button class="bb ${on?"on":"d"}" style="height:24px;min-width:46px" data-a=tg data-p="${p}">${on?"ON":"OFF"}</button></div>`};
 const txf=(p,l,ph,pw)=>`<label>${l}</label><input type=${pw||"text"} data-f="${p}" value="${esc(cget(p))}" placeholder="${ph||""}">`;
 const seg=(p,opts)=>`<div class=row style="flex-wrap:wrap">${opts.map(o=>`<button class="bb ${cget(p)==o[0]?"on":"d"}" data-a=sg data-p="${p}" data-v="${o[0]}">${o[1]}</button>`).join("")}</div>`;
@@ -329,7 +329,7 @@ if(t=="keys"){const id="gemini",p=CFG.prov.gemini,nk=p.k.length;
  h+=`<div class=row><input type=password id="nk_gemini" placeholder="Paste Gemini API key…" autocomplete=off style="flex:1;min-width:0;height:30px;background:#000d12;color:var(--TEXT);border:1px solid var(--BORDER);border-radius:3px;padding:4px 8px;font:12px 'Courier New'"><button class=bb data-a=kadd data-v=gemini>ADD KEY</button></div>`;
  h+=`<div class=row><button class="bb d" data-a=test data-v=gemini>TEST GEMINI CONNECTION</button></div><p id="sm_gemini" style="min-height:14px">${esc(sMsg.gemini||"")}</p></div>`;
  h+=`<p>Key storage is local to this device. Do not share your key or put it in public source code.</p>`}
-else if(t=="model"){h+=`<label>GEMINI MODEL</label>`+txf("prov.gemini.m","MODEL","gemini-2.5-flash")+txf("r.temp","TEMPERATURE (0 – 1)","0.7")+tgb("prov.gemini.on","Enable Gemini")}
+else if(t=="model"){h+=`<p>Choose any model available to your API key. Fetch models to see what your key can access, or type any valid Gemini model ID.</p><label>AVAILABLE GEMINI MODELS</label><select id="geminiModelList" style="width:100%;height:30px;background:#000d12;color:var(--TEXT);border:1px solid var(--BORDER);font:11px Courier New"><option value="">Choose a fetched model…</option>${geminiModels.map(m=>`<option value="${esc(m.id)}" ${CFG.prov.gemini.m===m.id?"selected":""}>${esc(m.displayName||m.id)} · ${esc(m.id)}</option>`).join("")}</select><button class="bb d" data-a="modelrefresh" data-v="gemini">↻ FETCH MODELS FOR THIS API KEY</button><p id="modelmsg" style="min-height:14px">${esc(sMsg.models||"")}</p>`+txf("prov.gemini.m","CUSTOM MODEL ID","gemini-3.1-pro-preview")+txf("r.temp","TEMPERATURE (0 – 1)","0.7")+tgb("prov.gemini.on","Enable Gemini")}
 else if(t=="ctl"){h+=`<p>Separate switches for each kind of autonomy. Turning one off blocks that whole class of actions.</p>`+tgb("aut.desktop","Phone / desktop control")+tgb("aut.game","Game control")+tgb("aut.msg","Messaging actions")+tgb("aut.wa","WhatsApp automatic replies")+tgb("aut.waall","Auto-reply to all unread chats")+tgb("aut.wag","Pause auto-reply on high-stakes messages")+txf("aut.contacts","ALLOWED AUTO-REPLY CONTACTS (comma separated)","Friend One, Family Group")+txf("aut.poll","WHATSAPP CHECK INTERVAL (seconds)","6")+txf("aut.par","MAX PARALLEL BACKGROUND TASKS","4")}
 else if(t=="apps"){h+=`<p>Let Ember operate your apps by voice or text — open them, read the screen, tap, type and send. Android only grants this through permissions you approve in system settings.</p>`+tgb("app.master","Allow Ember to control my apps","Master switch — everything below needs this on")+tgb("app.confirm","Ask before sensitive actions","Payments, sending messages, deleting, installing")+`<label>NEVER TOUCH THESE APPS (comma separated)</label><input type=text data-f="app.block" value="${esc(CFG.app.block)}" placeholder="Banking app, Wallet, Authenticator"><label>PERMISSIONS</label>`+APPS.map(a=>tgb("app."+a[0],a[1])).join("")+`<p>${CFG.app.master?"These choices are saved here. The Android build turns each one into the matching system permission request.":"App control is off."}</p>`}
 else if(t=="prv"){h+=tgb("prv.kill","Emergency kill switch","Blocks all tools, mic streaming, camera and speech")+tgb("prv.temp","Temporary memory mode","Nothing is remembered after the session")+tgb("prv.plog","Privacy audit log")+`<button class="bb d" data-a="showlog">VIEW ACTION LOG</button>`+tgb("prv.whisper","Whisper mode","Quieter voice playback")+tgb("prv.digest","Notification digest")+tgb("prv.screen","Screen understanding")+tgb("prv.wfrec","Workflow recording")+tgb("prv.agents","Multi-agent supervisor")}
@@ -346,14 +346,36 @@ else if(a=="pdef"){CFG.r.def=v;csave();settings()}
 else if(a=="kadd"){const i=$("#nk_"+v),k=i.value.trim();if(k.length<8){sMsg[v]="That key looks too short.";settings();return}if(!CFG.prov[v].k.includes(k))CFG.prov[v].k.push(k);csave();sMsg[v]="Saved ✓";log(`SYS: ${CFG.prov[v].n} key added`);settings()}
 else if(a=="krm"){CFG.prov[v].k.splice(+b.dataset.i,1);csave();settings()}
 else if(a=="test")testProv(v);
+else if(a=="modelrefresh")refreshGeminiModels();
 else if(a=="scalePreset"){applyEmberScale(Number(v));settings("display")}
 else if(a=="theme"){CFG.gen.theme=v;csave();accent(THEMES[v]);S.accent=THEMES[v];save();settings()}
 else if(a=="exp"){const o=JSON.parse(JSON.stringify(CFG));for(const k in o.prov)o.prov[k].k=[];try{navigator.clipboard.writeText(JSON.stringify(o,null,1));$("#gmsg").textContent="Settings copied to clipboard (keys left out)."}catch(er){$("#gmsg").textContent="Copy not allowed here."}}
 else if(a=="rst"){CFG=JSON.parse(JSON.stringify(DEFC));csave();log("SYS: Settings reset");settings()}};
 box.onchange=e=>{if(e.target.id==="emberScale"){applyEmberScale(Number(e.target.value)/100);const l=$("#scaleLabel");if(l)l.textContent=e.target.value+"%";return}const f=e.target.dataset?.f;if(f){cset(f,e.target.value);if(f.endsWith(".m")||f.endsWith(".u"))csave()}}}
+async function refreshGeminiModels(){
+ const p=CFG.prov.gemini,say=t=>{sMsg.models=t;if($("#modelmsg"))$("#modelmsg").textContent=t};
+ if(!p.k.length){say("Add a Gemini API key in API KEYS first.");return}
+ say("Checking models available to your API keys…");
+ const found=new Map();let errors=[];
+ for(const key of p.k){
+  try{
+   let status,data;
+   if(NAT()?.listModels){const x=JSON.parse(NAT().listModels(key));status=x.status;data=JSON.parse(x.body||"{}")}
+   else{const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",{headers:{"x-goog-api-key":key}});status=r.status;data=await r.json().catch(()=>({}))}
+   if(status<200||status>=300)throw new Error(data.error?.message||("HTTP "+status));
+   for(const m of data.models||[])if((m.supportedGenerationMethods||[]).includes("generateContent")){
+    const id=(m.name||"").replace(/^models\//,"");if(id)found.set(id,{id,displayName:m.displayName||id,description:m.description||""});
+   }
+  }catch(e){errors.push(e.message||"Request failed")}
+ }
+ geminiModels=[...found.values()].sort((a,b)=>a.id.localeCompare(b.id));
+ if(!geminiModels.length){say("No models returned. "+(errors[0]||"Check the API key and its access."));return}
+ say(geminiModels.length+" models support generateContent across your saved keys.");
+ settings("model");
+}
 async function testProv(id){const p=CFG.prov.gemini,say=t=>{sMsg.gemini=t;if($("#sm_gemini"))$("#sm_gemini").textContent=t};if(!p.k.length){say("Add a Gemini API key first.");return}say("Testing Gemini…");
  const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),12000);
- try{const model=(p.m||"gemini-2.5-pro").trim(),body=JSON.stringify({contents:[{parts:[{text:"Reply with exactly: EMBER CONNECTION OK"}]}],generationConfig:{maxOutputTokens:20}});let status,d;if(NAT()?.gemini){const x=JSON.parse(NAT().gemini("test",body,p.k[0],model));status=x.status;d=JSON.parse(x.body||"{}")}else{const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":p.k[0]},signal:ctl.signal,body});status=r.status;d=await r.json().catch(()=>({}))}say(status>=200&&status<300?"Gemini connected ✓":"Gemini error "+status+": "+(d.error?.message||"Request rejected"))}catch(e){say(e.name==="AbortError"?"Gemini test timed out.":"Gemini test failed: "+e.message)}finally{clearTimeout(to)}}
+ try{const model=(p.m||"gemini-3.1-pro-preview").trim(),body=JSON.stringify({contents:[{parts:[{text:"Reply with exactly: EMBER CONNECTION OK"}]}],generationConfig:{maxOutputTokens:20}});let status,d;if(NAT()?.gemini){const x=JSON.parse(NAT().gemini("test",body,p.k[0],model));status=x.status;d=JSON.parse(x.body||"{}")}else{const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":p.k[0]},signal:ctl.signal,body});status=r.status;d=await r.json().catch(()=>({}))}say(status>=200&&status<300?"Gemini connected ✓":"Gemini error "+status+": "+(d.error?.message||"Request rejected"))}catch(e){say(e.name==="AbortError"?"Gemini test timed out.":"Gemini test failed: "+e.message)}finally{clearTimeout(to)}}
 function applyEmberScale(scale){scale=Math.max(.8,Math.min(1.5,scale));localStorage.setItem("ember_text_scale",String(scale));if(window.EmberNative?.saveScale)EmberNative.saveScale(scale);document.documentElement.style.setProperty("--ember-text-scale",scale);document.querySelectorAll("#stage *").forEach(el=>{if(!el.dataset.emberBaseFont){const n=parseFloat(getComputedStyle(el).fontSize);if(Number.isFinite(n))el.dataset.emberBaseFont=n}const n=Number(el.dataset.emberBaseFont);if(Number.isFinite(n))el.style.setProperty("font-size",(n*scale)+"px","important")});}
 function restoreEmberScale(){let z=Number(localStorage.getItem("ember_text_scale")||"1");if(window.EmberNative?.getScale){try{z=EmberNative.getScale();localStorage.setItem("ember_text_scale",String(z))}catch(e){}}applyEmberScale(z)}
 function pset(){setBoxOn();settings()}
