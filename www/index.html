@@ -357,16 +357,25 @@ async function refreshGeminiModels(){
  const p=CFG.prov.gemini,say=t=>{sMsg.models=t;if($("#modelmsg"))$("#modelmsg").textContent=t};
  if(!p.k.length){say("Add a Gemini API key in API KEYS first.");return}
  say("Checking models available to your API keys…");
- const found=new Map();let errors=[];
+ const found=new Map(),errors=[];
  for(const key of p.k){
   try{
-   let status,data;
-   if(NAT()?.listModels){const x=JSON.parse(NAT().listModels(key));status=x.status;data=JSON.parse(x.body||"{}")}
-   else{const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",{headers:{"x-goog-api-key":key}});status=r.status;data=await r.json().catch(()=>({}))}
-   if(status<200||status>=300)throw new Error(data.error?.message||("HTTP "+status));
-   for(const m of data.models||[])if((m.supportedGenerationMethods||[]).includes("generateContent")){
-    const id=(m.name||"").replace(/^models\//,"");if(id)found.set(id,{id,displayName:m.displayName||id,description:m.description||""});
-   }
+   let pageToken="",pages=0;
+   do{
+    let status,data;
+    const endpoint="https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000"+(pageToken?"&pageToken="+encodeURIComponent(pageToken):"");
+    if(NAT()?.listModels){const x=JSON.parse(NAT().listModels(key,pageToken));status=x.status;data=JSON.parse(x.body||"{}")}
+    else{const r=await fetch(endpoint,{headers:{"x-goog-api-key":key}});status=r.status;data=await r.json().catch(()=>({}))}
+    if(status<200||status>=300)throw new Error(data.error?.message||("HTTP "+status));
+    for(const m of data.models||[]){
+     if((m.supportedGenerationMethods||[]).includes("generateContent")){
+      const id=(m.name||"").startsWith("models/")?m.name.slice(7):(m.name||"");
+      if(id)found.set(id,{id,displayName:m.displayName||id,description:m.description||""});
+     }
+    }
+    pageToken=data.nextPageToken||"";
+    pages++;
+   }while(pageToken&&pages<20);
   }catch(e){errors.push(e.message||"Request failed")}
  }
  geminiModels=[...found.values()].sort((a,b)=>a.id.localeCompare(b.id));
