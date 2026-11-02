@@ -53,8 +53,9 @@ class EmberBridge(private val context: Context, private val webView: WebView) {
         JSONObject().put("status", code).put("body", body).toString()
     } catch (e: Exception) { JSONObject().put("status", 0).put("body", JSONObject().put("error", JSONObject().put("message", e.message ?: "Network error")).toString()).toString() }
 
-    @JavascriptInterface fun listModels(key: String): String = try {
-        val url = URL("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000")
+    @JavascriptInterface fun listModels(key: String, pageToken: String): String = try {
+        val tokenQuery = if (pageToken.isBlank()) "" else "&pageToken=" + java.net.URLEncoder.encode(pageToken, "UTF-8")
+        val url = URL("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000" + tokenQuery)
         val conn = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 15000
