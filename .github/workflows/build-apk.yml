@@ -27,6 +27,50 @@ jobs:
           grep -q 'id="center"' app/src/main/assets/index.html
           grep -q 'Traseng created by Darth Wolf' app/src/main/assets/index.html
           grep -q 'applyEmberScale' app/src/main/assets/index.html
+      - name: Validate synchronized HTML and JavaScript syntax
+        run: |
+          cmp -s www/index.html app/src/main/assets/index.html
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          import subprocess, tempfile
+
+          class Scripts(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.active = False
+                  self.parts = []
+                  self.current = []
+
+              def handle_starttag(self, tag, attrs):
+                  if tag == "script":
+                      attrs = dict(attrs)
+                      self.active = True
+                      self.current = []
+                      self.skip = bool(attrs.get("src")) or attrs.get("type", "").lower() in ("application/json", "application/ld+json")
+
+              def handle_data(self, data):
+                  if self.active and not getattr(self, "skip", False):
+                      self.current.append(data)
+
+              def handle_endtag(self, tag):
+                  if tag == "script" and self.active:
+                      if not getattr(self, "skip", False):
+                          self.parts.append("".join(self.current))
+                      self.active = False
+
+          parser = Scripts()
+          parser.feed(Path("www/index.html").read_text(encoding="utf-8"))
+          scripts = [s for s in parser.parts if s.strip()]
+          if not scripts:
+              raise SystemExit("No inline JavaScript found")
+          with tempfile.TemporaryDirectory() as directory:
+              for index, script in enumerate(scripts):
+                  target = Path(directory) / f"script-{index}.js"
+                  target.write_text(script, encoding="utf-8")
+                  subprocess.run(["node", "--check", str(target)], check=True)
+          print(f"Validated {len(scripts)} inline JavaScript block(s)")
+          PY
       - name: Build native Kotlin APK
         run: gradle :app:assembleDebug --no-daemon
       - name: Verify APK
